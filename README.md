@@ -13,8 +13,7 @@ scorecard at any time.
 ## Status
 
 **Day 1 of 35** — Phase 1: Foundation. Folder scaffold + takehome
-`evaluate.py` files staged + `.env` scaffolding in place. See `PROGRESS_LOG.md`
-and `reports/` / `explainers/` for daily progress.
+`evaluate.py` files staged + `.env` scaffolding in place.
 
 ## Layout
 
@@ -24,8 +23,6 @@ and `reports/` / `explainers/` for daily progress.
 - `takehome/` — external scorecard compliance (evaluators are NEVER modified)
 - `benchmarks/` — Phase 3 + Phase 5 comparison-study harnesses
 - `tests/` — pytest (unit, integration, adversarial)
-- `reports/` — daily technical reports (engineer audience)
-- `explainers/` — daily plain-English explainers (future-self / non-engineer audience)
 - `results/` — metrics, experiment logs, comparison charts
 - `docs/` — system design, API contracts, demo scenario walkthrough
 

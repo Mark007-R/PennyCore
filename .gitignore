@@ -20,6 +20,12 @@ SETUP_INSTRUCTIONS.md
 TASK1_solo-builder_SKILL.md
 TASK2_solo-post-generator_SKILL.md
 
+# Personal logs / daily diary — local-only, NEVER commit to remote
+PROGRESS_LOG.md
+POSTS_LOG.md
+reports/
+explainers/
+
 # Local data
 data/local/
 *.sqlite
