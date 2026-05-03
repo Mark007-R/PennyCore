@@ -1,0 +1,37 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Secrets — NEVER commit
+.env
+takehome/*/.env
+*.key
+*.pem
+
+# Setup / SKILL files — local-only, NEVER commit to remote
+SETUP_INSTRUCTIONS.md
+TASK1_solo-builder_SKILL.md
+TASK2_solo-post-generator_SKILL.md
+
+# Local data
+data/local/
+*.sqlite
+*.db
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+*.log
