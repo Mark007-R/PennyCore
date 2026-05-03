@@ -21,11 +21,10 @@ phase-PR workflow's Day 1 exception.
   `migrations/versions/`, `benchmarks/data/`, `data/{samples,local}/`,
   `notebooks/`, `results/samples/`, `reports/`, `explainers/`,
   `tests/{unit,integration,adversarial}/`, `ui/`, `scripts/`.
-- Takehome evaluator + supporting files downloaded from
-  (external assessment repo — redacted) (curl + raw URLs):
-  `evaluate.py`, `requirements.txt`, `TASK.md`, `SCORECARD.md` for both
-  context-engine and orchestrator. SKILL Rule 17 invariant: `evaluate.py`
-  files NEVER modified.
+- Takehome evaluator + supporting files downloaded from the external
+  assessment repo (curl + raw URLs): `evaluate.py`, `requirements.txt`,
+  `TASK.md`, `SCORECARD.md` for both context-engine and orchestrator.
+  SKILL Rule 17 invariant: `evaluate.py` files NEVER modified.
 - `.env.example` + `.env` at project root (Anthropic-primary, multi-provider).
 - `.env.example` + `.env` at each `takehome/*/` subdir (Azure-flavored —
   adapter is locked to `LLM_PROVIDER=azure`).

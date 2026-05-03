@@ -51,8 +51,8 @@ These are reading targets, not finished annotations. Tomorrow's
   `migrations/versions/`, `benchmarks/data/`, `data/samples/`, `data/local/`,
   `notebooks/`, `results/samples/`, `reports/`, `explainers/`,
   `tests/{unit,integration,adversarial}/`, `ui/`, `scripts/`.
-- Takehome files downloaded from
-  `(external assessment repo — redacted)` via raw URLs (curl):
+- Takehome files downloaded from the external assessment repo via raw
+  URLs (curl):
   - `takehome/context-engine/evaluate.py` (564 LOC, untouched)
   - `takehome/orchestrator/evaluate.py` (687 LOC, untouched)
   - Plus `requirements.txt`, `TASK.md`, `SCORECARD.md` for both halves.
@@ -133,7 +133,9 @@ None. Day 1 is intentionally low-risk — folder scaffold + downloads + docs.
   auditability). Phase 1 PR opens on Day 2 (`phase/1-foundation` branch).
 
 ## References Used Today
-- external takehome assessment repo: (external assessment repo — redacted)
+- External take-home assessment repo (private — used as a compatibility
+  target for the `takehome/` adapter contracts; evaluator files staged
+  unchanged per SKILL Rule 17)
 - Anthropic Python SDK docs: https://docs.anthropic.com (LLM dispatch design)
 - python-dotenv docs: https://github.com/theskumar/python-dotenv (`.env` loading conventions)
 

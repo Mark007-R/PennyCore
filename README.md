@@ -4,11 +4,11 @@ Production-grade AI infrastructure: a memory layer (`context_engine`) and a
 decision layer (`orchestrator`) for customer-service AI agents in regulated
 industries (banking, mortgage, insurance).
 
-This repo extends the [external take-home assessment]((external assessment repo — redacted))
-into a 35-day build (May 4 – June 7, 2026). The takehome's interface contracts
-live untouched in `takehome/`; thin adapter modules wrap the production
-packages so the system can be graded against the original scorecard at any
-time.
+The project is built around a 35-day plan (May 4 – June 7, 2026) and is
+designed to also satisfy an external take-home assessment harness whose
+interface contracts live untouched in `takehome/`. Thin adapter modules wrap
+the production packages so the system can be graded against the external
+scorecard at any time.
 
 ## Status
 
