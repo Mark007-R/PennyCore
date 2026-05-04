@@ -328,10 +328,20 @@ Mechanism:
   budget. Rendering is templated (Jinja2) so the brief is human-readable
   and the LLM gets consistent structure.
 - **LLM dispatch** (`context_engine/llm/*`): one factory `get_client()` reads
-  `LLM_PROVIDER` from `.env`. Anthropic Claude is the default for the main
-  system; Azure OpenAI (Foundry Models endpoint, default model `Kimi-K2.6`)
-  is the default for the takehome adapter; mock is the fallback when no
-  provider is configured. Detail in §LLM PROVIDER MODE of the SKILL doc.
+  `LLM_PROVIDER` from `.env`. Anthropic Claude (`claude-sonnet-4-6`) is the
+  default for the main system; Azure AI Foundry Models (OpenAI-compatible
+  REST, default model `Kimi-K2.6`) is the default for the takehome adapter;
+  a deterministic mock is the fallback when no provider is configured. The
+  dispatch order at runtime is: `MOCK_LLM=true` → mock; else `LLM_PROVIDER`
+  picks one of `anthropic` / `azure` / `openai`; else mock. Every call site
+  imports `from context_engine.llm import get_client` — no hard-coded
+  providers, no direct `os.environ` reads outside this module. The
+  takehome adapters carry their own per-component `.env` that pins
+  `LLM_PROVIDER=azure` regardless of the global default, satisfying the
+  external evaluator's OpenAI-shaped API requirement (Azure Foundry's
+  Models endpoint is OpenAI-compatible, so the same `openai` SDK client
+  works against both). The `.env.example` template at the project root
+  documents every variable; it's the canonical reference.
 
 ### 6.2 orchestrator
 
