@@ -1,0 +1,11 @@
+"""Project-root conftest — make `contracts/` and other top-level packages
+importable from tests without requiring an editable install yet (the full
+pyproject.toml lands Day 4 with the Docker scaffold).
+"""
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
