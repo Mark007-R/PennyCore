@@ -1,0 +1,80 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pennycore"
+version = "0.1.0"
+description = "PennyCore — production AI infrastructure: context-engine (memory) + orchestrator (decisions)."
+requires-python = ">=3.11"
+readme = "README.md"
+license = {text = "Proprietary"}
+authors = [{name = "Mark"}]
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.5",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "httpx>=0.27",
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["contracts*", "context_engine*", "orchestrator*"]
+exclude = [
+    "tests*",
+    "takehome*",
+    "benchmarks*",
+    "scripts*",
+    "ui*",
+    "notebooks*",
+    "docs*",
+    "data*",
+    "results*",
+    "migrations*",
+    "reports*",
+    "explainers*",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+addopts = "-ra"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["takehome", "migrations"]
+
+[tool.ruff.lint]
+# Conservative subset — expand in Phase 2 once the codebase has a CI pulse.
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_configs = true
+ignore_missing_imports = true
+# Strict only on the contracts package today; services land Day 5+ and get
+# the strict treatment then.
+plugins = ["pydantic.mypy"]
+
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = "contracts.*"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true

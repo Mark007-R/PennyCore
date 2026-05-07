@@ -1,0 +1,50 @@
+# Build context exclusions — keep image lean and don't ship secrets.
+
+# Secrets — defence in depth on top of .gitignore.
+.env
+takehome/*/.env
+*.key
+*.pem
+
+# Python caches
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local-only diary files (not in git, not in image either).
+PROGRESS_LOG.md
+POSTS_LOG.md
+reports/
+explainers/
+
+# SKILL files — local-only, never in any image.
+SETUP_INSTRUCTIONS.md
+TASK1_solo-builder_SKILL.md
+TASK2_solo-post-generator_SKILL.md
+
+# Data, results, notebooks — not needed at runtime.
+data/local/
+results/
+notebooks/
+benchmarks/data/
+
+# Tests are not part of the runtime image (they run via the local CI script).
+tests/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Build artefacts
+dist/
+build/
+*.log
+.coverage
