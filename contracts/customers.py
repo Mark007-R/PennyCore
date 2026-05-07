@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 
 class IdentityKind(str, Enum):
@@ -62,7 +62,7 @@ class CustomerIdentity(BaseModel):
 
     @field_validator("identity_value")
     @classmethod
-    def _normalize_value(cls, v: str, info) -> str:
+    def _normalize_value(cls, v: str, info: ValidationInfo) -> str:
         # Email and chat_handle: lowercase + strip. Phone/external_id: strip only
         # (phone normalization is the linker's job — keep contract honest).
         kind = info.data.get("identity_kind")

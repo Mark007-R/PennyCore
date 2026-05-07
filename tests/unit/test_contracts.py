@@ -42,7 +42,6 @@ from contracts import (
     Tenant,
 )
 
-
 NOW = datetime.now(timezone.utc)
 
 

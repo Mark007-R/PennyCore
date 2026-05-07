@@ -1,0 +1,136 @@
+# PennyCore — local dev orchestration.
+#
+# Boots Postgres (with pgvector) + Redis + both FastAPI services.
+# `docker compose up` is the canonical "is the system runnable?" check
+# at the end of every day per the daily discipline rule.
+#
+#   - context-engine  -> http://localhost:8001
+#   - orchestrator    -> http://localhost:8002
+#   - postgres        -> localhost:5432
+#   - redis           -> localhost:6379
+#
+# Postgres runs the schema DDL on first boot via the
+# /docker-entrypoint-initdb.d mount — every .sql file in
+# `migrations/versions/` is executed in alphabetical order on an empty
+# data volume. To re-run from scratch: `docker compose down -v`.
+#
+# `.env` at the project root supplies LLM_PROVIDER + API keys; mock mode
+# is the default if no provider is configured.
+
+services:
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: pennycore-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pennycore}
+      POSTGRES_USER: ${POSTGRES_USER:-pennycore}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pennycore_local_dev}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations/versions:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pennycore} -d ${POSTGRES_DB:-pennycore}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: pennycore-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  context_engine:
+    build:
+      context: .
+      target: runtime
+    image: pennycore:dev
+    container_name: pennycore-context-engine
+    command:
+      - uvicorn
+      - context_engine.api:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --reload
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-pennycore}
+      POSTGRES_USER: ${POSTGRES_USER:-pennycore}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pennycore_local_dev}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      MOCK_LLM: ${MOCK_LLM:-true}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AZURE_API_KEY: ${AZURE_API_KEY:-}
+      AZURE_ENDPOINT: ${AZURE_ENDPOINT:-}
+      AZURE_API_VERSION: ${AZURE_API_VERSION:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - "8001:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Bind-mount source so --reload picks up local edits during dev. The
+    # production compose file (Day 29) drops these mounts.
+    volumes:
+      - ./contracts:/app/contracts
+      - ./context_engine:/app/context_engine
+
+  orchestrator:
+    build:
+      context: .
+      target: runtime
+    image: pennycore:dev
+    container_name: pennycore-orchestrator
+    command:
+      - uvicorn
+      - orchestrator.api:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --reload
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-pennycore}
+      POSTGRES_USER: ${POSTGRES_USER:-pennycore}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pennycore_local_dev}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      MOCK_LLM: ${MOCK_LLM:-true}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AZURE_API_KEY: ${AZURE_API_KEY:-}
+      AZURE_ENDPOINT: ${AZURE_ENDPOINT:-}
+      AZURE_API_VERSION: ${AZURE_API_VERSION:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - "8002:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./contracts:/app/contracts
+      - ./orchestrator:/app/orchestrator
+
+volumes:
+  postgres_data:
