@@ -18,7 +18,7 @@ the request body / path / header — there is no implicit "default tenant".
 
 from __future__ import annotations
 
-import os
+import warnings
 from typing import Any
 
 from dotenv import load_dotenv
@@ -30,6 +30,7 @@ from context_engine.ingestion import (
     build_event_from_request,
     ingest_event,
 )
+from context_engine.llm import get_client
 from context_engine.repository import EventRepository, InMemoryEventRepository
 
 # `.env` lives at the project root and is loaded once at import time.
@@ -72,10 +73,19 @@ def get_bus() -> EventBus:
 
 
 def _llm_mode() -> str:
-    """Resolve the active LLM mode from env. Mirrors `context_engine.llm.get_client`."""
-    if os.getenv("MOCK_LLM", "").lower() in ("true", "1", "yes"):
-        return "mock"
-    return os.getenv("LLM_PROVIDER", "mock").lower()
+    """Report the *resolved* LLM client name — what `get_client()` would
+    actually return, including the placeholder-key → mock fallback. Reading
+    `LLM_PROVIDER` directly would lie under the `.env.example` defaults
+    (LLM_PROVIDER=anthropic + placeholder key), reporting `anthropic` while
+    the dispatch layer is actually returning MockClient.
+
+    Warnings are suppressed here because this is a hot diagnostic path
+    (called on every `GET /`); the dispatch layer still emits its warning
+    on the first real call site (planner / brief assembler / etc.).
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return get_client().name
 
 
 @app.get("/", tags=["meta"])
@@ -127,16 +137,19 @@ def post_event(
 
     Idempotency: callers MUST supply an idempotency key — either via the
     `X-Idempotency-Key` HTTP header (preferred) or the `idempotency_key`
-    body field. The header wins if both are present and disagree, because
-    network retries (gateways, queue replays) populate the header but
-    can't see the parsed body. A repeat call with the same key returns
-    `200 OK` with `created=false` and the same `event_id` — never an error.
+    body field. If BOTH are present they MUST be equal: disagreement
+    returns `400 Bad Request` rather than silently letting one win,
+    because silent precedence would mask a bug in the upstream caller
+    (the SKILL §5.5 graceful-degradation rule values visible failures
+    over invisible drift). A repeat call with the same key returns
+    `200 OK` with `created=false` and the same `event_id` — never an
+    error.
 
     Status codes:
       * `202 Accepted`  — new event accepted for processing.
       * `200 OK`        — idempotent replay; existing event returned.
       * `400 Bad Request` — no idempotency key supplied (header AND body
-                            empty) or header/body keys contradict each other.
+                            empty) or header/body keys disagree.
       * `422 Unprocessable Entity` — request body fails Pydantic validation
                                      (handled by FastAPI automatically).
     """

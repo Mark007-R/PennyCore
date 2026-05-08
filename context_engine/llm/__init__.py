@@ -136,7 +136,15 @@ def get_client() -> LLMClient:
             model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
         )
 
-    # Unknown / "mock" / unset provider.
+    # Explicit `mock` or unset → silent (the user knows). Unknown provider
+    # value → warn so the misconfiguration is visible in logs / CI rather
+    # than silently degrading to mock mode.
+    if provider not in ("mock", ""):
+        warnings.warn(
+            f"LLM_PROVIDER={provider!r} is not recognized; falling back to "
+            "MockClient. Supported values: anthropic, azure, openai, mock.",
+            stacklevel=2,
+        )
     return MockClient()
 
 

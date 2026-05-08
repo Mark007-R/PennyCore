@@ -32,9 +32,15 @@ from contracts import ChannelType, Event, EventType
 
 
 def new_event_id() -> str:
-    """ULID-shaped event id. Sortable enough for log debugging; unique
-    enough for a 35-day project. Real ULIDs land if/when we adopt the
-    `python-ulid` package post-MVP."""
+    """UUID4-derived event id with an `evt_` prefix.
+
+    Globally unique; NOT time-sortable (uuid4 is random). Log readability
+    comes from the prefix; ordering relies on the `received_at` column on
+    the events table, which the indexes in
+    `migrations/versions/0001_initial_schema.sql` lead with anyway.
+    Switch to `python-ulid` if a future use case needs sortable ids
+    without a separate timestamp join.
+    """
     return f"evt_{uuid.uuid4().hex[:24]}"
 
 

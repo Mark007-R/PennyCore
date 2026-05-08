@@ -175,9 +175,25 @@ class TestGetClientResolution:
         assert isinstance(c, MockClient)
         assert any("openai" in str(w.message).lower() for w in caught)
 
-    def test_unknown_provider_falls_back_to_mock(
+    def test_unknown_provider_falls_back_to_mock_with_warning(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("LLM_PROVIDER", "cohere")  # unsupported
-        c = get_client()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            c = get_client()
         assert isinstance(c, MockClient)
+        # Misconfiguration must be visible in logs, not silently degraded.
+        assert any("cohere" in str(w.message).lower() for w in caught)
+        assert any("not recognized" in str(w.message).lower() for w in caught)
+
+    def test_explicit_mock_provider_is_silent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # `LLM_PROVIDER=mock` is intentional — the user knows. No warning.
+        monkeypatch.setenv("LLM_PROVIDER", "mock")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            c = get_client()
+        assert isinstance(c, MockClient)
+        assert not any("not recognized" in str(w.message).lower() for w in caught)
