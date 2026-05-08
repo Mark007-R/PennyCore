@@ -1,8 +1,14 @@
 # PennyCore — runtime dependencies pinned to compatible ranges.
-# Day 5+ adds: psycopg[binary]>=3.1, redis>=5, sqlalchemy>=2, alembic>=1.13.
-# Day 5+ also adds: anthropic>=0.40, openai>=1.40 (LLM dispatch layer).
+# Day 6+ adds: psycopg[binary]>=3.1, sqlalchemy>=2, alembic>=1.13 (Postgres adapter).
+# Day 8+  adds: redis>=5 (Redis adapter for the orchestrator subscriber).
 
 fastapi>=0.110,<1.0
 uvicorn[standard]>=0.27,<1.0
 pydantic>=2.5,<3.0
 python-dotenv>=1.0,<2.0
+
+# LLM provider SDKs — imported LAZILY by the dispatch layer. Listed here so
+# the production container has them ready when LLM_PROVIDER is non-mock; the
+# unit-test path (mock mode) does not need them at all.
+anthropic>=0.40,<1.0
+openai>=1.40,<2.0

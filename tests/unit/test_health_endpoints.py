@@ -36,9 +36,10 @@ def test_context_engine_root(ce_client: TestClient) -> None:
     assert r.status_code == 200
     body: dict[str, Any] = r.json()
     assert body["service"] == "context-engine"
-    assert body["version"] == "0.1.0"
-    assert body["status"] == "scaffold"
-    assert body["phase"] == "1-foundation"
+    # Day 5 bumped both fields when /events landed.
+    assert body["version"] == "0.2.0"
+    assert body["status"] == "mvp"
+    assert body["phase"] == "2-mvp-build"
     assert body["llm_mode"] in {"mock", "anthropic", "azure", "openai"}
 
 
@@ -53,8 +54,9 @@ def test_context_engine_readyz(ce_client: TestClient) -> None:
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "ready"
-    assert body["scaffold"] is True
+    # Day 5: scaffold flag dropped; datastore_mode replaces it.
     assert body["datastores_probed"] is False
+    assert body["datastore_mode"] == "memory"
 
 
 # --- orchestrator -----------------------------------------------------------
@@ -97,6 +99,14 @@ def test_openapi_schema_exposed(ce_client: TestClient, orch_client: TestClient) 
         assert "/healthz" in spec["paths"]
         assert "/readyz" in spec["paths"]
         assert "/" in spec["paths"]
+
+
+def test_context_engine_exposes_events_endpoint(ce_client: TestClient) -> None:
+    """Day 5: POST /events must appear in the OpenAPI schema for the
+    future admin UI / client SDK to discover."""
+    spec = ce_client.get("/openapi.json").json()
+    assert "/events" in spec["paths"]
+    assert "post" in spec["paths"]["/events"]
 
 
 def test_unknown_route_returns_404(ce_client: TestClient) -> None:
