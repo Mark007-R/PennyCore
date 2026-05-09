@@ -54,9 +54,15 @@ def test_context_engine_readyz(ce_client: TestClient) -> None:
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "ready"
-    # Day 5: scaffold flag dropped; datastore_mode replaces it.
-    assert body["datastores_probed"] is False
-    assert body["datastore_mode"] == "memory"
+    # Day 6 wired the DATABASE_URL switch — readyz reports `memory` when
+    # the env var is unset (the default unit-test path) and `postgres`
+    # when a live Pg is available. Either is a healthy state. The
+    # invariant is: probed=True iff mode is postgres.
+    assert body["datastore_mode"] in ("memory", "postgres")
+    if body["datastore_mode"] == "memory":
+        assert body["datastores_probed"] is False
+    else:
+        assert body["datastores_probed"] is True
 
 
 # --- orchestrator -----------------------------------------------------------

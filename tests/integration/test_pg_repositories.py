@@ -75,11 +75,19 @@ def tenant_id(conn_factory) -> Iterator[str]:  # type: ignore[no-untyped-def]
 
     yield tid
 
-    # Cleanup. ON DELETE CASCADE on every scoped table sweeps everything.
+    # Cleanup. The audit_log append-only trigger (migration 0002) refuses
+    # DELETE — even when it's coming through `ON DELETE CASCADE` from a
+    # tenant drop. That is production-correct (audit retention outranks
+    # tenant deletion), but for test cleanup we DISABLE USER triggers
+    # for the duration of the cascade. ALTER TABLE … DISABLE TRIGGER
+    # USER touches only user-defined triggers; FK/system triggers stay
+    # active so the cascade itself still runs correctly.
     conn = conn_factory()
     try:
         with conn.cursor() as cur:
+            cur.execute("ALTER TABLE audit_log DISABLE TRIGGER USER")
             cur.execute("DELETE FROM tenants WHERE id = %s", (tid,))
+            cur.execute("ALTER TABLE audit_log ENABLE TRIGGER USER")
         conn.commit()
     finally:
         conn.close()
