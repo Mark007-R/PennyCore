@@ -18,6 +18,7 @@ the request body / path / header — there is no implicit "default tenant".
 
 from __future__ import annotations
 
+import os
 import warnings
 from typing import Any
 
@@ -54,15 +55,48 @@ app = FastAPI(
 
 
 # ----------------------------------------------------------------------------
-# Module-level singletons (in-memory mode). Tests override via
-# `app.dependency_overrides[get_repo]` to get a fresh instance per test.
-# Day 6 replaces these with Postgres / Redis adapters; the FastAPI dependency
-# wiring stays identical.
+# Datastore selection — DATABASE_URL flips the entire stack to Postgres.
+#
+# When DATABASE_URL is set at import time, the module-level repositories
+# become the psycopg-backed adapters; otherwise they stay in-memory. The
+# FastAPI dependency wiring is identical either way (same Protocol shape),
+# so request handlers don't know or care which backend is live. Tests
+# always override via `dependency_overrides`, so the unit-test path is
+# unaffected by the deployer's `DATABASE_URL` value.
 # ----------------------------------------------------------------------------
 
-_default_repo: EventRepository = InMemoryEventRepository()
+
+def _build_default_repos() -> tuple[
+    EventRepository, CustomerRepository, str
+]:
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        return (
+            InMemoryEventRepository(),
+            InMemoryCustomerRepository(),
+            "memory",
+        )
+
+    # Lazy imports — psycopg is only needed when DATABASE_URL is set.
+    from context_engine.pg_customer_repository import (
+        PgCustomerRepository,
+        make_connection_factory,
+    )
+    from context_engine.pg_repository import PgEventRepository
+
+    factory = make_connection_factory(database_url)
+    return (
+        PgEventRepository(factory),
+        PgCustomerRepository(factory),
+        "postgres",
+    )
+
+
+_default_repo: EventRepository
+_default_customer_repo: CustomerRepository
+_datastore_mode: str
+_default_repo, _default_customer_repo, _datastore_mode = _build_default_repos()
 _default_bus: EventBus = InMemoryEventBus()
-_default_customer_repo: CustomerRepository = InMemoryCustomerRepository()
 
 
 def get_repo() -> EventRepository:
@@ -115,18 +149,45 @@ def healthz() -> dict[str, str]:
 
 
 @app.get("/readyz", tags=["health"])
-def readyz() -> dict[str, Any]:
+def readyz(response: Response) -> dict[str, Any]:
     """Readiness probe.
 
-    Day 5: the in-memory repo + bus are always ready. Day 6 wires real
-    Postgres connectivity probes here (and Day 8 adds Redis). The
-    `datastore_mode` field is the hand-off — once it flips from `memory`
-    to `postgres`, the readiness contract gets stricter.
+    In `memory` mode (no DATABASE_URL) the in-memory repo is always
+    ready and we don't probe anything. In `postgres` mode we open a
+    short-lived connection and run `SELECT 1` to confirm the database
+    is reachable AND that the schema is loaded (the `events` table
+    must exist; otherwise the migration runner hasn't been pointed at
+    this database yet). A failed probe returns 503 so kube/docker
+    readiness gates fail-closed.
+
+    Day 8 adds the Redis probe alongside the Postgres one.
     """
+    if _datastore_mode == "memory":
+        return {
+            "status": "ready",
+            "datastores_probed": False,
+            "datastore_mode": "memory",
+        }
+
+    # Postgres-mode probe — small, single round-trip.
+    try:
+        repo = _default_repo
+        # The narrowest live-connectivity check that also exercises the
+        # schema: count() runs `SELECT COUNT(*) FROM events`. If the
+        # table is missing the query raises and we fail-closed below.
+        repo.count()
+    except Exception as exc:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return {
+            "status": "not_ready",
+            "datastores_probed": True,
+            "datastore_mode": _datastore_mode,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
     return {
         "status": "ready",
-        "datastores_probed": False,
-        "datastore_mode": "memory",
+        "datastores_probed": True,
+        "datastore_mode": _datastore_mode,
     }
 
 

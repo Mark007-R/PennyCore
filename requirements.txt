@@ -1,11 +1,17 @@
 # PennyCore — runtime dependencies pinned to compatible ranges.
-# Day 6+ adds: psycopg[binary]>=3.1, sqlalchemy>=2, alembic>=1.13 (Postgres adapter).
-# Day 8+  adds: redis>=5 (Redis adapter for the orchestrator subscriber).
+# Day 8+ adds: redis>=5 (Redis adapter for the orchestrator subscriber).
 
 fastapi>=0.110,<1.0
 uvicorn[standard]>=0.27,<1.0
 pydantic>=2.5,<3.0
 python-dotenv>=1.0,<2.0
+
+# Postgres — psycopg3 (binary wheel; native libpq linkage). Imported LAZILY
+# by `context_engine.pg_repository` so the unit-test path (in-memory mode)
+# stays psycopg-free. Alembic deferred until a use case forces downgrades —
+# `scripts/migrate.py` applies the raw .sql files in `migrations/versions/`
+# in order against an idempotent `schema_migrations` ledger.
+psycopg[binary]>=3.1,<4.0
 
 # LLM provider SDKs — imported LAZILY by the dispatch layer. Listed here so
 # the production container has them ready when LLM_PROVIDER is non-mock; the
