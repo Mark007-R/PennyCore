@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# PennyCore pre-commit hook.
+#
+# Enforced rules:
+#   1. Takehome `evaluate.py` files are frozen (rule 17 — TAKEHOME
+#      INVARIANT). The hook computes their SHA256 and rejects the
+#      commit if either has drifted from the recorded baseline.
+#   2. Diary files (`PROGRESS_LOG.md`, `POSTS_LOG.md`, `reports/**`,
+#      `explainers/**`) and SKILL files are local-only and must not be
+#      committed (rule 21 + rule 2). `.gitignore` already excludes
+#      them; this hook is belt-and-braces in case the ignore rules get
+#      edited.
+#   3. Real API keys (sk-ant-, sk-proj-, AZURE_OPENAI_API_KEY=<real>)
+#      must never enter a commit (rule 19 — SECRETS INVARIANT).
+#
+# Install: `git config core.hooksPath .githooks` (one-time per clone).
+# Bypass intentionally is NOT supported — modifying the takehome
+# evaluator must be a deliberate two-step process: refresh the checksum
+# file in a separate commit, then make the change.
+
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+checksum_file="${repo_root}/.githooks/evaluate-checksums.txt"
+
+red()    { printf '\033[31m%s\033[0m\n' "$*"; }
+yellow() { printf '\033[33m%s\033[0m\n' "$*"; }
+green()  { printf '\033[32m%s\033[0m\n' "$*"; }
+
+fail_count=0
+
+# --------------------------------------------------------------------
+# 1. Takehome evaluate.py checksum freeze
+# --------------------------------------------------------------------
+
+if [[ ! -f "${checksum_file}" ]]; then
+    red "pre-commit: checksum baseline not found at .githooks/evaluate-checksums.txt"
+    exit 1
+fi
+
+# Pull the recorded checksums (skip comment lines starting with #).
+while IFS= read -r line; do
+    # Format: `<sha256>  <path>` (with optional `*` for binary mode).
+    [[ "${line}" =~ ^# ]] && continue
+    [[ -z "${line// }" ]] && continue
+
+    expected_hash="$(echo "${line}" | awk '{print $1}')"
+    raw_path="$(echo "${line}" | awk '{print $2}')"
+    file_path="${raw_path#\*}"  # strip `*` binary-mode marker
+
+    if [[ ! -f "${repo_root}/${file_path}" ]]; then
+        red "pre-commit: takehome file is missing: ${file_path}"
+        red "  rule 17 — takehome/*/evaluate.py must not be deleted"
+        fail_count=$((fail_count + 1))
+        continue
+    fi
+
+    actual_hash="$(sha256sum "${repo_root}/${file_path}" | awk '{print $1}')"
+    if [[ "${actual_hash}" != "${expected_hash}" ]]; then
+        red "pre-commit: takehome evaluate.py checksum DRIFT"
+        red "  file:     ${file_path}"
+        red "  expected: ${expected_hash}"
+        red "  got:      ${actual_hash}"
+        red "  rule 17 — takehome/*/evaluate.py is frozen"
+        red ""
+        red "  if the external repo legitimately published a new version,"
+        red "  refresh the baseline in a separate commit:"
+        red "    sha256sum takehome/*/evaluate.py > new-checksums.txt  # then merge into .githooks/evaluate-checksums.txt"
+        fail_count=$((fail_count + 1))
+    fi
+done < "${checksum_file}"
+
+# --------------------------------------------------------------------
+# 2. Local-only files must not be staged
+# --------------------------------------------------------------------
+
+# Files that are git-ignored AND would be a rule violation if they got
+# in via `git add -f` or an ignore-rule edit.
+forbidden_paths=(
+    "PROGRESS_LOG.md"
+    "POSTS_LOG.md"
+    "SETUP_INSTRUCTIONS.md"
+    "TASK1_solo-builder_SKILL.md"
+    "TASK2_solo-post-generator_SKILL.md"
+)
+forbidden_dirs=(
+    "reports/"
+    "explainers/"
+)
+
+staged_files="$(git diff --cached --name-only --diff-filter=ACM)"
+
+while IFS= read -r staged; do
+    [[ -z "${staged}" ]] && continue
+    for f in "${forbidden_paths[@]}"; do
+        if [[ "${staged}" == "${f}" ]]; then
+            red "pre-commit: refusing to commit local-only file: ${staged}"
+            red "  rule 2 + rule 21 — diary/SKILL files stay local"
+            fail_count=$((fail_count + 1))
+        fi
+    done
+    for d in "${forbidden_dirs[@]}"; do
+        if [[ "${staged}" == ${d}* ]]; then
+            red "pre-commit: refusing to commit local-only file: ${staged}"
+            red "  rule 2 — ${d} is local-only"
+            fail_count=$((fail_count + 1))
+        fi
+    done
+done <<< "${staged_files}"
+
+# --------------------------------------------------------------------
+# 3. Secret scan on staged diff
+# --------------------------------------------------------------------
+
+# Look for actual key-shaped values, not the placeholder strings used in
+# .env.example. The placeholder `REPLACE-WITH-...` is benign and should
+# pass; a real `sk-ant-XXXXXXXXX...` (40+ chars after the prefix) fails.
+secret_patterns=(
+    'sk-ant-api03-[A-Za-z0-9_-]{40,}'
+    'sk-proj-[A-Za-z0-9_-]{40,}'
+    'AZURE_OPENAI_API_KEY=[A-Za-z0-9]{20,}'
+    'ANTHROPIC_API_KEY=sk-ant-[A-Za-z0-9_-]{40,}'
+    'OPENAI_API_KEY=sk-[A-Za-z0-9_-]{40,}'
+)
+
+diff_text="$(git diff --cached -U0)"
+for pattern in "${secret_patterns[@]}"; do
+    if echo "${diff_text}" | grep -E "${pattern}" >/dev/null 2>&1; then
+        red "pre-commit: possible secret leak (pattern: ${pattern})"
+        red "  rule 19 — API keys live ONLY in .env, never in commits"
+        fail_count=$((fail_count + 1))
+    fi
+done
+
+# --------------------------------------------------------------------
+# Verdict
+# --------------------------------------------------------------------
+
+if [[ "${fail_count}" -gt 0 ]]; then
+    red ""
+    red "pre-commit: ${fail_count} check(s) failed — commit aborted"
+    exit 1
+fi
+
+green "pre-commit: checks passed (takehome checksums + local-only + secrets)"
+exit 0
