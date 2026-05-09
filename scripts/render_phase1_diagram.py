@@ -7,16 +7,15 @@ STRICT RULES for this diagram:
    Technical names (context-engine, orchestrator, Postgres, Redis) appear
    only as small subtitles under the plain-English label.
 
-What exists in Phase 1:
-- 4 containers running as scaffolds (postgres, redis, context-engine, orchestrator)
-- The two web services boot and answer "I'm alive" / "I'm ready" health pings
+What exists at the end of the foundation phase:
+- 4 containers wired together (postgres, redis, context-engine, orchestrator)
 - The database has 12 tables auto-loaded on first start
 - Three rules the database itself protects:
     - the same event cannot be processed twice
     - customers from different companies never see each other's data
     - removing a customer also removes their messages (no orphan rows)
 - A 2-second quality check runs every commit (45 automated checks pass)
-- Healthcheck-gated startup: services wait for db + bus before they start
+- Services wait for db + bus to be healthy before they start
 
 Output: results/samples/day04_phase1_architecture.png
 """
@@ -71,26 +70,24 @@ ax.text(
 )
 ax.text(
     6.5, 7.78,
-    "Four pieces wired together. One command starts everything. The real work begins next.",
+    "Four pieces wired together. One command starts everything.",
     color=MUTED, fontsize=12, ha="center", va="center", family="DejaVu Sans",
 )
 
 # ---- service cards (top row) — plain-English labels -----------------------
 # Memory service
 card(0.6, 4.85, 5.5, 2.35, ACCENT)
-ax.text(0.90, 6.85, "Memory Service", color=ACCENT, fontsize=15, fontweight="bold")
-ax.text(0.90, 6.55, "(internal name: context-engine)", color=MUTED, fontsize=8.5, style="italic")
-ax.text(0.90, 6.10, "Will remember every customer conversation", color=TEXT, fontsize=10.5)
-ax.text(0.90, 5.82, "across email, chat, SMS, and voice.", color=TEXT, fontsize=10.5)
-ax.text(0.90, 5.35, 'Today: an empty shell that just says "I\'m alive".', color=MUTED, fontsize=9, style="italic")
+ax.text(0.90, 6.65, "Memory Service", color=ACCENT, fontsize=15, fontweight="bold")
+ax.text(0.90, 6.32, "(internal name: context-engine)", color=MUTED, fontsize=8.5, style="italic")
+ax.text(0.90, 5.80, "Will remember every customer conversation", color=TEXT, fontsize=10.5)
+ax.text(0.90, 5.50, "across email, chat, SMS, and voice.", color=TEXT, fontsize=10.5)
 
 # Decision service
 card(6.9, 4.85, 5.5, 2.35, ACCENT_2)
-ax.text(7.20, 6.85, "Decision Service", color=ACCENT_2, fontsize=15, fontweight="bold")
-ax.text(7.20, 6.55, "(internal name: orchestrator)", color=MUTED, fontsize=8.5, style="italic")
-ax.text(7.20, 6.10, "Will decide what action to take next", color=TEXT, fontsize=10.5)
-ax.text(7.20, 5.82, "and route risky ones to a human.", color=TEXT, fontsize=10.5)
-ax.text(7.20, 5.35, 'Today: an empty shell that just says "I\'m alive".', color=MUTED, fontsize=9, style="italic")
+ax.text(7.20, 6.65, "Decision Service", color=ACCENT_2, fontsize=15, fontweight="bold")
+ax.text(7.20, 6.32, "(internal name: orchestrator)", color=MUTED, fontsize=8.5, style="italic")
+ax.text(7.20, 5.80, "Will decide what action to take next", color=TEXT, fontsize=10.5)
+ax.text(7.20, 5.50, "and route risky ones to a human.", color=TEXT, fontsize=10.5)
 
 # ---- data layer (bottom row) ----------------------------------------------
 # Database
@@ -105,11 +102,9 @@ ax.text(0.90, 2.00, "    never see each other's data.", color=TEXT, fontsize=9)
 
 # Message bus
 card(6.9, 1.85, 5.5, 2.35, BUS)
-ax.text(7.20, 3.85, "Message Bus", color=BUS, fontsize=15, fontweight="bold")
-ax.text(7.20, 3.55, "(internal name: Redis)", color=MUTED, fontsize=8.5, style="italic")
-ax.text(7.20, 3.15, "Will let the two services talk in real time.", color=TEXT, fontsize=10.5)
-ax.text(7.20, 2.55, "Today: running and healthy.", color=MUTED, fontsize=9, style="italic")
-ax.text(7.20, 2.27, "No traffic yet.", color=MUTED, fontsize=9, style="italic")
+ax.text(7.20, 3.55, "Message Bus", color=BUS, fontsize=15, fontweight="bold")
+ax.text(7.20, 3.22, "(internal name: Redis)", color=MUTED, fontsize=8.5, style="italic")
+ax.text(7.20, 2.75, "Will let the two services talk in real time.", color=TEXT, fontsize=10.5)
 
 # ---- arrows: the only real wiring in Phase 1 (startup ordering) -----------
 # Short, clean dotted arrows from each db-layer card up to the service above it.
