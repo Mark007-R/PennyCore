@@ -24,12 +24,17 @@ from typing import Any
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 
+from context_engine.customer_repository import (
+    CustomerRepository,
+    InMemoryCustomerRepository,
+)
 from context_engine.event_bus import EventBus, InMemoryEventBus
 from context_engine.ingestion import (
     IngestionRequest,
     build_event_from_request,
     ingest_event,
 )
+from context_engine.linking import resolve_customer
 from context_engine.llm import get_client
 from context_engine.repository import EventRepository, InMemoryEventRepository
 
@@ -57,6 +62,7 @@ app = FastAPI(
 
 _default_repo: EventRepository = InMemoryEventRepository()
 _default_bus: EventBus = InMemoryEventBus()
+_default_customer_repo: CustomerRepository = InMemoryCustomerRepository()
 
 
 def get_repo() -> EventRepository:
@@ -65,6 +71,10 @@ def get_repo() -> EventRepository:
 
 def get_bus() -> EventBus:
     return _default_bus
+
+
+def get_customer_repo() -> CustomerRepository:
+    return _default_customer_repo
 
 
 # ----------------------------------------------------------------------------
@@ -132,6 +142,7 @@ def post_event(
     x_idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
     repo: EventRepository = Depends(get_repo),
     bus: EventBus = Depends(get_bus),
+    customer_repo: CustomerRepository = Depends(get_customer_repo),
 ) -> dict[str, Any]:
     """Accept an event from any channel.
 
@@ -145,11 +156,23 @@ def post_event(
     `200 OK` with `created=false` and the same `event_id` — never an
     error.
 
+    Customer linking (Day 6): the request payload is scanned for identity
+    hints (`from_email`, `from_phone`, `external_id`, `chat_handle` and
+    aliases). The resolver matches against existing
+    `customer_identities` rows for this tenant in priority order
+    (external_id > email > phone > chat_handle); on no match a new
+    customer is created with all hints inserted as identities. The
+    response carries the resolved `customer_id` and `customer_created`
+    flag so callers can downstream-route based on whether this is a
+    first-contact event. An explicit `request.customer_id` for an
+    unknown customer in this tenant returns `404 Not Found`.
+
     Status codes:
       * `202 Accepted`  — new event accepted for processing.
       * `200 OK`        — idempotent replay; existing event returned.
       * `400 Bad Request` — no idempotency key supplied (header AND body
                             empty) or header/body keys disagree.
+      * `404 Not Found` — explicit `customer_id` not found in this tenant.
       * `422 Unprocessable Entity` — request body fails Pydantic validation
                                      (handled by FastAPI automatically).
     """
@@ -175,7 +198,43 @@ def post_event(
             detail="X-Idempotency-Key header and body idempotency_key disagree",
         )
 
-    event = build_event_from_request(request, idempotency_key=idem)
+    # Replay short-circuit: if this idempotency key has already been seen
+    # for this tenant, skip the linker entirely and return the original
+    # event. Without this, a replay would re-run identity extraction
+    # against a (potentially tampered) replayed payload, which could
+    # pollute `customer_identities` even though the stored event is
+    # immutable. The Day-19 idempotency hardening tests will exercise the
+    # full race-safe path; for Day 6 the pre-check + post-check belt-and-
+    # braces is sufficient.
+    existing = repo.get_event_by_idempotency(
+        tenant_id=request.tenant_id, idempotency_key=idem
+    )
+    if existing is not None:
+        response.status_code = status.HTTP_200_OK
+        return {
+            "event_id": existing.id,
+            "tenant_id": existing.tenant_id,
+            "customer_id": existing.customer_id,
+            "customer_created": False,
+            "matched_identity": None,
+            "channel_code": existing.channel_code.value,
+            "event_type": existing.event_type.value,
+            "idempotency_key": existing.idempotency_key,
+            "received_at": existing.received_at.isoformat(),
+            "created": False,
+            "deduped": True,
+        }
+
+    try:
+        link = resolve_customer(request, customer_repo=customer_repo)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+
+    event = build_event_from_request(
+        request, idempotency_key=idem, customer_id=link.customer_id
+    )
     result = ingest_event(event, repo=repo, bus=bus)
 
     response.status_code = (
@@ -184,6 +243,16 @@ def post_event(
     return {
         "event_id": result.event.id,
         "tenant_id": result.event.tenant_id,
+        "customer_id": result.event.customer_id,
+        "customer_created": link.customer_created if result.created else False,
+        "matched_identity": (
+            {
+                "kind": link.matched_kind.value,
+                "value": link.matched_value,
+            }
+            if link.matched_kind is not None and result.created
+            else None
+        ),
         "channel_code": result.event.channel_code.value,
         "event_type": result.event.event_type.value,
         "idempotency_key": result.event.idempotency_key,

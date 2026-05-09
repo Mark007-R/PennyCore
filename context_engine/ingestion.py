@@ -73,17 +73,23 @@ def build_event_from_request(
     request: IngestionRequest,
     *,
     idempotency_key: str,
+    customer_id: str | None = None,
 ) -> Event:
     """Construct the canonical `Event` from a request + resolved idempotency key.
 
     Server-stamped fields (`id`, `received_at`) are set here, NEVER trusted
     from the client. This is the only function in the codebase that
     fabricates event ids — keep it that way.
+
+    `customer_id` override: if supplied (Day 6+, by the linker) it takes
+    precedence over `request.customer_id`. The linker's resolution is the
+    source of truth; the request value is only a hint the linker may have
+    used as input.
     """
     return Event(
         id=new_event_id(),
         tenant_id=request.tenant_id,
-        customer_id=request.customer_id,
+        customer_id=customer_id if customer_id is not None else request.customer_id,
         channel_code=request.channel_code,
         event_type=request.event_type,
         idempotency_key=idempotency_key,

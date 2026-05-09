@@ -22,7 +22,8 @@ from datetime import datetime, timezone
 import pytest
 from fastapi.testclient import TestClient
 
-from context_engine.api import app, get_bus, get_repo
+from context_engine.api import app, get_bus, get_customer_repo, get_repo
+from context_engine.customer_repository import InMemoryCustomerRepository
 from context_engine.event_bus import InMemoryEventBus, channel_for, envelope_for
 from context_engine.ingestion import (
     IngestionRequest,
@@ -30,7 +31,7 @@ from context_engine.ingestion import (
     ingest_event,
 )
 from context_engine.repository import InMemoryEventRepository
-from contracts import ChannelType, Event, EventType
+from contracts import ChannelType, Event, EventType, IdentityKind
 
 # ---------------------------------------------------------------------------
 # Fixtures: per-test fresh repo + bus, injected via dependency_overrides.
@@ -48,11 +49,19 @@ def bus() -> InMemoryEventBus:
 
 
 @pytest.fixture
+def customer_repo() -> InMemoryCustomerRepository:
+    return InMemoryCustomerRepository()
+
+
+@pytest.fixture
 def client(
-    repo: InMemoryEventRepository, bus: InMemoryEventBus
+    repo: InMemoryEventRepository,
+    bus: InMemoryEventBus,
+    customer_repo: InMemoryCustomerRepository,
 ) -> Iterator[TestClient]:
     app.dependency_overrides[get_repo] = lambda: repo
     app.dependency_overrides[get_bus] = lambda: bus
+    app.dependency_overrides[get_customer_repo] = lambda: customer_repo
     try:
         yield TestClient(app)
     finally:
@@ -268,3 +277,235 @@ class TestPostEventHTTP:
         assert "payload" not in envelope
         # And no payload string snuck into envelope values.
         assert "secret-account-123" not in str(envelope)
+
+
+# ---------------------------------------------------------------------------
+# Customer linking — Day 6 wiring
+# ---------------------------------------------------------------------------
+
+
+class TestPostEventCustomerLinking:
+    """End-to-end HTTP tests for the linker integrated into POST /events.
+
+    Pure-logic linker behavior is exercised in `test_linking.py`; this
+    suite verifies the API surface honors it correctly.
+    """
+
+    def test_first_event_creates_customer(
+        self, client: TestClient, customer_repo: InMemoryCustomerRepository
+    ) -> None:
+        r = client.post(
+            "/events",
+            json=_body(payload={"from_email": "jane@acme.com", "text": "Hi"}),
+        )
+        assert r.status_code == 202
+        body = r.json()
+        assert body["customer_id"].startswith("cust_")
+        assert body["customer_created"] is True
+        assert body["matched_identity"] is None
+        assert customer_repo.count(tenant_id="acme-bank") == 1
+
+    def test_second_event_same_email_links_existing(
+        self, client: TestClient, customer_repo: InMemoryCustomerRepository
+    ) -> None:
+        first = client.post(
+            "/events",
+            json=_body(
+                idempotency_key="msg-1",
+                payload={"from_email": "jane@acme.com"},
+            ),
+        )
+        first_cid = first.json()["customer_id"]
+
+        second = client.post(
+            "/events",
+            json=_body(
+                idempotency_key="msg-2",
+                payload={"from_email": "JANE@acme.com", "text": "again"},
+            ),
+        )
+        assert second.status_code == 202  # different idempotency key, new event
+        body = second.json()
+        assert body["customer_id"] == first_cid
+        assert body["customer_created"] is False
+        assert body["matched_identity"] == {
+            "kind": "email",
+            "value": "jane@acme.com",
+        }
+        assert customer_repo.count(tenant_id="acme-bank") == 1
+
+    def test_cross_channel_link_via_external_id(
+        self, client: TestClient, customer_repo: InMemoryCustomerRepository
+    ) -> None:
+        # SMS first (phone + external_id)…
+        sms = client.post(
+            "/events",
+            json=_body(
+                channel_code="sms",
+                idempotency_key="sms-1",
+                payload={
+                    "from_phone": "+15550100100",
+                    "external_id": "CRM-001",
+                    "text": "hi",
+                },
+            ),
+        )
+        assert sms.status_code == 202
+        sms_cid = sms.json()["customer_id"]
+
+        # …then email arrives with same external_id but new email.
+        email = client.post(
+            "/events",
+            json=_body(
+                channel_code="email",
+                idempotency_key="email-1",
+                payload={
+                    "external_id": "CRM-001",
+                    "from_email": "jane@acme.com",
+                    "subject": "Mortgage q",
+                },
+            ),
+        )
+        assert email.status_code == 202
+        body = email.json()
+        assert body["customer_id"] == sms_cid
+        assert body["customer_created"] is False
+        # external_id beats email in priority.
+        assert body["matched_identity"]["kind"] == "external_id"
+        assert body["matched_identity"]["value"] == "CRM-001"
+        # The email is now also attached to that customer.
+        idents = customer_repo.list_identities(
+            tenant_id="acme-bank", customer_id=sms_cid
+        )
+        assert {i.identity_kind for i in idents} == {
+            IdentityKind.EMAIL,
+            IdentityKind.PHONE,
+            IdentityKind.EXTERNAL_ID,
+        }
+
+    def test_replay_returns_same_customer_no_link_run(
+        self,
+        client: TestClient,
+        customer_repo: InMemoryCustomerRepository,
+        bus: InMemoryEventBus,
+    ) -> None:
+        first = client.post(
+            "/events",
+            json=_body(payload={"from_email": "jane@acme.com"}),
+        )
+        first_cid = first.json()["customer_id"]
+        # Sanity: one customer, one identity row.
+        assert customer_repo.count(tenant_id="acme-bank") == 1
+
+        # Replay with TAMPERED payload — added a new fake email. The
+        # replay short-circuit must return the original event with the
+        # original customer_id and MUST NOT touch the customer store.
+        replay = client.post(
+            "/events",
+            json=_body(payload={"from_email": "JANE@ACME.com", "from_phone": "+15550100100"}),
+        )
+        assert replay.status_code == 200
+        body = replay.json()
+        assert body["customer_id"] == first_cid
+        assert body["customer_created"] is False
+        assert body["matched_identity"] is None
+        assert body["deduped"] is True
+        # Customer store unchanged — no new identity from the tampered payload.
+        idents = customer_repo.list_identities(
+            tenant_id="acme-bank", customer_id=first_cid
+        )
+        assert {i.identity_value for i in idents} == {"jane@acme.com"}
+        assert len(bus.published) == 1  # still no second publish
+
+    def test_explicit_unknown_customer_id_returns_404(
+        self, client: TestClient
+    ) -> None:
+        r = client.post(
+            "/events",
+            json=_body(customer_id="cust_made_up_123"),
+        )
+        assert r.status_code == 404
+        assert "not found" in r.json()["detail"].lower()
+
+    def test_multi_tenant_isolation_creates_two_customers(
+        self, client: TestClient, customer_repo: InMemoryCustomerRepository
+    ) -> None:
+        # Same email under two tenants → two distinct customers.
+        r_a = client.post(
+            "/events",
+            json=_body(
+                tenant_id="bank-a",
+                idempotency_key="k-a",
+                payload={"from_email": "jane@acme.com"},
+            ),
+        )
+        r_b = client.post(
+            "/events",
+            json=_body(
+                tenant_id="bank-b",
+                idempotency_key="k-b",
+                payload={"from_email": "jane@acme.com"},
+            ),
+        )
+        assert r_a.status_code == 202
+        assert r_b.status_code == 202
+        cid_a = r_a.json()["customer_id"]
+        cid_b = r_b.json()["customer_id"]
+        assert cid_a != cid_b
+        assert customer_repo.count(tenant_id="bank-a") == 1
+        assert customer_repo.count(tenant_id="bank-b") == 1
+        # Tenant A cannot see tenant B's customer by id.
+        assert (
+            customer_repo.get_customer(tenant_id="bank-a", customer_id=cid_b)
+            is None
+        )
+
+    def test_no_hints_no_explicit_id_creates_anonymous_customer(
+        self, client: TestClient, customer_repo: InMemoryCustomerRepository
+    ) -> None:
+        # Channels can produce events with no identity hints (e.g. an
+        # `anomaly_detected` system event). We still need to attribute it.
+        r = client.post(
+            "/events",
+            json=_body(
+                event_type="anomaly_detected",
+                payload={"reason": "rate-limit-spike"},
+            ),
+        )
+        assert r.status_code == 202
+        body = r.json()
+        assert body["customer_id"].startswith("cust_")
+        assert body["customer_created"] is True
+        idents = customer_repo.list_identities(
+            tenant_id="acme-bank", customer_id=body["customer_id"]
+        )
+        assert idents == []  # anonymous — no identities
+
+    def test_explicit_customer_id_path_attaches_payload_identities(
+        self, client: TestClient, customer_repo: InMemoryCustomerRepository
+    ) -> None:
+        # Pre-create the customer with an email; client passes that id
+        # explicitly along with a phone in the payload — phone should be
+        # attached as a new identity.
+        existing = customer_repo.create_customer(
+            tenant_id="acme-bank",
+            identities=[(IdentityKind.EMAIL, "jane@acme.com")],
+        )
+        r = client.post(
+            "/events",
+            json=_body(
+                customer_id=existing.id,
+                payload={"from_phone": "+15550100100"},
+            ),
+        )
+        assert r.status_code == 202
+        body = r.json()
+        assert body["customer_id"] == existing.id
+        assert body["customer_created"] is False
+        idents = customer_repo.list_identities(
+            tenant_id="acme-bank", customer_id=existing.id
+        )
+        assert {i.identity_kind for i in idents} == {
+            IdentityKind.EMAIL,
+            IdentityKind.PHONE,
+        }
