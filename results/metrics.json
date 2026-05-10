@@ -1,0 +1,82 @@
+{
+  "_about": "PennyCore — append-only metrics journal. Each entry is a per-day snapshot; never overwrite past entries. Defined in SKILL Step 4 + the PRIMARY METRICS section. Initialized on Day 7 as a backfill (the journal was missed on Days 5 and 6 when the first measurable code shipped — those days' numbers are NOT retroactively reconstructed; the day_05 and day_06 entries record only the binary 'feature shipped' fact so future readers know the journal started here). Comparison metrics (quality, cost, quality/$ ratios) start populating Day 12 when Phase 3 benchmarks land.",
+  "schema_version": 1,
+  "entries": [
+    {
+      "day": 5,
+      "phase": 2,
+      "date": "2026-05-08",
+      "component": "context_engine",
+      "feature": "ingestion_api",
+      "feature_shipped": true,
+      "tests_passing": 79,
+      "tests_added_today": 79,
+      "takehome_score": null,
+      "notes": "metrics journal not initialized this day; ingestion latency benchmarks not retroactively reconstructed."
+    },
+    {
+      "day": 6,
+      "phase": 2,
+      "date": "2026-05-09",
+      "component": "context_engine",
+      "feature": "cross_channel_linker_plus_postgres_adapters",
+      "feature_shipped": true,
+      "tests_passing": 146,
+      "tests_added_today": 67,
+      "takehome_score": null,
+      "notes": "metrics journal not initialized this day; linker resolution latency not retroactively reconstructed."
+    },
+    {
+      "day": 7,
+      "phase": 2,
+      "date": "2026-05-10",
+      "component": "context_engine",
+      "feature": "brief_assembly_recency_baseline_plus_takehome_adapter",
+      "feature_shipped": true,
+      "tests_passing": 176,
+      "tests_added_today": 40,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset; PG-integration tests gated",
+      "coverage_touched_modules_pct": {
+        "context_engine.brief_assembly": 92,
+        "context_engine.retrieval": 100,
+        "context_engine.retrieval.recency": 98,
+        "total_touched": 96
+      },
+      "brief_assembly_latency_ms": {
+        "p50": 0.43,
+        "p95": 0.621,
+        "p99": 0.906,
+        "samples": 100,
+        "input_shape": "50 messages + 2 actions",
+        "token_budget": 2000,
+        "llm_mode": "mock",
+        "notes": "pure Python sort + greedy pack; no LLM call; recency strategy"
+      },
+      "tokens_in_brief_vs_naive": {
+        "brief_tokens": 1570,
+        "naive_tokens": 1059,
+        "ratio": 1.483,
+        "interpretation": "at budget=2000 with 50-message history, the recency brief is LARGER than naive concat because it adds channel markers, timestamps, and action segments that naive concat omits. The ratio<1 win the Phase 3 hybrid is supposed to deliver only kicks in when the borrower history exceeds the budget — the 200-history-pair benchmark on Day 12 quantifies that."
+      },
+      "takehome_score": {
+        "context_engine": {
+          "scenarios_passed": 5,
+          "scenarios_total": 6,
+          "scenarios_passed_ids": [1, 2, 3, 4, 5],
+          "scenario_6_status": "fail_no_openai_module",
+          "evaluator_exit_code": 0,
+          "self_rubric_estimate_core_42": 29,
+          "self_rubric_estimate_with_bonuses": 32
+        },
+        "orchestrator": null
+      },
+      "system_boot": {
+        "docker_compose_up": "verified",
+        "containers_healthy": ["pennycore-postgres", "pennycore-redis", "pennycore-context-engine", "pennycore-orchestrator"],
+        "context_engine_healthz": "200 ok",
+        "orchestrator_healthz": "200 ok"
+      }
+    }
+  ]
+}
