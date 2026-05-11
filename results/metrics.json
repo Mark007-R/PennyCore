@@ -77,6 +77,57 @@
         "context_engine_healthz": "200 ok",
         "orchestrator_healthz": "200 ok"
       }
+    },
+    {
+      "day": 8,
+      "phase": 2,
+      "date": "2026-05-11",
+      "component": "orchestrator",
+      "feature": "event_listener_redis_subscriber_plus_context_engine_redis_publisher",
+      "feature_shipped": true,
+      "tests_passing": 206,
+      "tests_added_today": 30,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset for PG-integration tests; all gating unchanged from Day 7",
+      "coverage_touched_modules_pct": {
+        "context_engine.event_bus": 90,
+        "context_engine.redis_event_bus": 83,
+        "orchestrator.event_listener": 90,
+        "orchestrator.api": 71,
+        "total_touched": 83,
+        "uncovered_branches_note": "live-broker paths: make_redis_event_bus URL factory, lifespan redis-mode bootstrap, Postgres /readyz probe, defensive except in the Redis pump. Exercised on docker compose up (verified below), not in unit tests by design."
+      },
+      "takehome_score": {
+        "context_engine": null,
+        "orchestrator": null,
+        "note": "no takehome run today; next scheduled Day 10 (orchestrator adapter) + Day 11 (phase wrap re-run)"
+      },
+      "system_boot": {
+        "docker_compose_up": "verified",
+        "containers_healthy": ["pennycore-postgres", "pennycore-redis", "pennycore-context-engine", "pennycore-orchestrator"],
+        "context_engine_healthz": "200 ok",
+        "orchestrator_healthz": "200 ok",
+        "context_engine_root": {
+          "datastore_mode": "postgres",
+          "bus_mode": "redis"
+        },
+        "orchestrator_root": {
+          "listener_mode": "redis"
+        },
+        "orchestrator_readyz": {
+          "status": "ready",
+          "probed": {"postgres": "ok", "redis": "ok"}
+        }
+      },
+      "end_to_end_redis_round_trip": {
+        "verified": true,
+        "method": "POST /events on context-engine (port 8001) -> Redis Pub/Sub channel events.acme -> orchestrator listener thread -> GET /events/recent?tenant_id=acme (port 8002)",
+        "event_id_published": "evt_963ff24cf2914a90b1318adf",
+        "event_id_received": "evt_963ff24cf2914a90b1318adf",
+        "round_trip_latency_observed_sec": "<1 (sleep 1 between publish and recent-read; not microbenchmarked today)",
+        "tenant_seeded": "INSERT INTO tenants (id, name, slug) VALUES ('acme', 'Acme Bank', 'acme-bank') — required by Day-3 schema FK"
+      },
+      "notes": "Day 8 task was orchestrator-side subscriber, but verification revealed the publish side was still hardcoded to InMemoryEventBus. Added context-engine REDIS_URL bus dispatcher (3 new tests) so the two halves actually share a wire. Live docker stack confirms publish-to-Redis -> subscribe-from-Redis -> /events/recent works end-to-end."
     }
   ]
 }

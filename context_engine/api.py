@@ -96,7 +96,31 @@ _default_repo: EventRepository
 _default_customer_repo: CustomerRepository
 _datastore_mode: str
 _default_repo, _default_customer_repo, _datastore_mode = _build_default_repos()
-_default_bus: EventBus = InMemoryEventBus()
+
+
+def _build_default_bus() -> tuple[EventBus, str]:
+    """Pick the publish-side bus from env. Mirrors the orchestrator's
+    listener-mode selector: `REDIS_URL` set → `RedisEventBus`; unset →
+    `InMemoryEventBus` (the test path and any single-process scenario).
+
+    Day-8 end-to-end wiring lives here: if both services run with the
+    same `REDIS_URL` (as docker-compose configures), the orchestrator's
+    `RedisEventListener` actually receives what this bus publishes.
+    """
+    redis_url = os.getenv("REDIS_URL", "").strip()
+    if not redis_url:
+        return InMemoryEventBus(), "in-memory"
+
+    # Lazy import — keeps the test path psycopg-style: only paths that
+    # explicitly opt into Redis pay the import cost.
+    from context_engine.redis_event_bus import make_redis_event_bus
+
+    return make_redis_event_bus(redis_url), "redis"
+
+
+_default_bus: EventBus
+_bus_mode: str
+_default_bus, _bus_mode = _build_default_bus()
 
 
 def get_repo() -> EventRepository:
@@ -140,6 +164,8 @@ def root() -> dict[str, Any]:
         "llm_mode": _llm_mode(),
         "status": "mvp",
         "phase": "2-mvp-build",
+        "datastore_mode": _datastore_mode,
+        "bus_mode": _bus_mode,
     }
 
 
