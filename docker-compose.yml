@@ -113,6 +113,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pennycore_local_dev}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      # Day 8: REDIS_URL flips the orchestrator from `unattached` mode to
+      # `redis` mode at lifespan startup. The context-engine reads the same
+      # var to flip its bus from `InMemoryEventBus` to `RedisEventBus`.
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://pennycore:pennycore_local_dev@postgres:5432/pennycore}
       LLM_PROVIDER: ${LLM_PROVIDER:-mock}
       MOCK_LLM: ${MOCK_LLM:-true}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}

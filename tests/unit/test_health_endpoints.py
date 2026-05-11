@@ -72,9 +72,15 @@ def test_orchestrator_root(orch_client: TestClient) -> None:
     assert r.status_code == 200
     body: dict[str, Any] = r.json()
     assert body["service"] == "orchestrator"
-    assert body["version"] == "0.1.0"
-    assert body["status"] == "scaffold"
-    assert body["phase"] == "1-foundation"
+    # Day 8 bumped both fields when the event listener + diagnostic
+    # endpoint landed.
+    assert body["version"] == "0.2.0"
+    assert body["status"] == "mvp"
+    assert body["phase"] == "2-mvp-build"
+    assert body["llm_mode"] in {"mock", "anthropic", "azure", "openai"}
+    # listener_mode is one of the resolved modes; "unattached" is the
+    # default in the no-env unit-test path.
+    assert body["listener_mode"] in {"unattached", "in-memory", "redis"}
 
 
 def test_orchestrator_healthz(orch_client: TestClient) -> None:
@@ -85,8 +91,18 @@ def test_orchestrator_healthz(orch_client: TestClient) -> None:
 
 def test_orchestrator_readyz(orch_client: TestClient) -> None:
     r = orch_client.get("/readyz")
+    # In the no-DATABASE_URL / no-REDIS_URL path the orchestrator is
+    # always ready — Day 8 added probes that only fire when the
+    # corresponding env var is set. The 503 paths are exercised in
+    # test_orchestrator_readyz_probes.py.
     assert r.status_code == 200
-    assert r.json()["status"] == "ready"
+    body = r.json()
+    assert body["status"] in {"ready", "not_ready"}
+    if body["status"] == "ready":
+        # Mode-agnostic happy-path: probed dict is present and
+        # listener_mode is reported.
+        assert "probed" in body
+        assert "listener_mode" in body
 
 
 # --- both -------------------------------------------------------------------

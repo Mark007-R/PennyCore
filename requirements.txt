@@ -1,5 +1,4 @@
 # PennyCore — runtime dependencies pinned to compatible ranges.
-# Day 8+ adds: redis>=5 (Redis adapter for the orchestrator subscriber).
 
 fastapi>=0.110,<1.0
 uvicorn[standard]>=0.27,<1.0
@@ -12,6 +11,11 @@ python-dotenv>=1.0,<2.0
 # `scripts/migrate.py` applies the raw .sql files in `migrations/versions/`
 # in order against an idempotent `schema_migrations` ledger.
 psycopg[binary]>=3.1,<4.0
+
+# Redis — Day 8: publish-side adapter on context-engine, subscribe-side
+# pump in the orchestrator. Imported LAZILY by both paths so the in-memory
+# unit-test path doesn't need a live broker.
+redis>=5.0,<7.0
 
 # LLM provider SDKs — imported LAZILY by the dispatch layer. Listed here so
 # the production container has them ready when LLM_PROVIDER is non-mock; the
