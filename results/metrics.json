@@ -128,6 +128,49 @@
         "tenant_seeded": "INSERT INTO tenants (id, name, slug) VALUES ('acme', 'Acme Bank', 'acme-bank') — required by Day-3 schema FK"
       },
       "notes": "Day 8 task was orchestrator-side subscriber, but verification revealed the publish side was still hardcoded to InMemoryEventBus. Added context-engine REDIS_URL bus dispatcher (3 new tests) so the two halves actually share a wire. Live docker stack confirms publish-to-Redis -> subscribe-from-Redis -> /events/recent works end-to-end."
+    },
+    {
+      "day": 9,
+      "phase": 2,
+      "date": "2026-05-12",
+      "component": "orchestrator",
+      "feature": "llm_planner_plus_proposals_endpoint",
+      "feature_shipped": true,
+      "tests_passing": 239,
+      "tests_added_today": 33,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset for PG-integration tests; gating unchanged from Day 7",
+      "modules_added": ["orchestrator/planner.py"],
+      "endpoints_added": ["GET /proposals/recent"],
+      "planner_design": {
+        "tool_call_shape": "strict-JSON prompt + post-parse + Pydantic ActionType enum validation",
+        "rationale": "provider-portable across Anthropic/Azure/OpenAI without coupling to any one tool-call SDK",
+        "fallback_rules": {
+          "message_received": "send_borrower_message",
+          "document_uploaded": "update_status",
+          "status_changed": "notify_loan_officer",
+          "anomaly_detected": "notify_loan_officer",
+          "system_event": "no_op",
+          "unknown": "notify_loan_officer (conservative default — escalate to human)"
+        },
+        "fallback_signal": "ActionProposal.proposed_by = ProposedBy.FALLBACK on any LLM failure (network, JSON parse, schema violation, unknown action_type)"
+      },
+      "handler_chain": [
+        "make_buffered_handler(_recent_events)  — Day 8",
+        "make_planning_handler(_recent_proposals)  — Day 9"
+      ],
+      "takehome_score": {
+        "context_engine": null,
+        "orchestrator": null,
+        "note": "no takehome run today; next scheduled Day 10 (orchestrator adapter) + Day 11 (phase wrap re-run)"
+      },
+      "system_boot": {
+        "imports_ok": true,
+        "orch_routes": ["/", "/events/recent", "/healthz", "/proposals/recent", "/readyz"],
+        "ce_routes": ["/", "/events", "/healthz", "/readyz"],
+        "docker_compose_up": "not re-verified today; no infra-layer changes since Day 8 verification — only application-level wiring in orchestrator/api.py + new orchestrator/planner.py module"
+      },
+      "notes": "Day 9 planner is mock-mode-only in the live system (placeholder ANTHROPIC_API_KEY); LLM path covered by fake-client tests. Real-LLM exercise deferred to user-driven key setup or Phase 3 benchmark days."
     }
   ]
 }

@@ -31,7 +31,7 @@ from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query, Response, status
+from fastapi import FastAPI, Query, Response, status
 
 from context_engine.event_bus import InMemoryEventBus
 from context_engine.llm import get_client
@@ -41,6 +41,11 @@ from orchestrator.event_listener import (
     RecentEventsBuffer,
     RedisEventListener,
     make_buffered_handler,
+)
+from orchestrator.planner import (
+    ProposalsBuffer,
+    chain_handlers,
+    make_planning_handler,
 )
 
 load_dotenv()
@@ -54,8 +59,22 @@ load_dotenv()
 # ----------------------------------------------------------------------------
 
 _recent_events: RecentEventsBuffer = RecentEventsBuffer()
+_recent_proposals: ProposalsBuffer = ProposalsBuffer()
 _listener: EventListener | None = None
 _listener_mode: str = "unattached"
+
+
+def _compose_handler() -> Any:
+    """Compose the Day-8 buffered handler with the Day-9 planner handler.
+
+    Chained so a bug in either handler doesn't stop the other from
+    running (the listener invariant — handler exceptions are isolated).
+    Day 10 will append the policy + queue + audit handler to this chain.
+    """
+    return chain_handlers(
+        make_buffered_handler(_recent_events),
+        make_planning_handler(_recent_proposals),
+    )
 
 
 def _build_default_listener() -> tuple[EventListener | None, str]:
@@ -91,7 +110,7 @@ def attach_in_memory_bus(bus: InMemoryEventBus) -> None:
     if _listener is not None:
         _listener.stop()
     _listener = InMemoryEventListener(bus)
-    _listener.start(make_buffered_handler(_recent_events))
+    _listener.start(_compose_handler())
     _listener_mode = "in-memory"
 
 
@@ -113,7 +132,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         # In-memory listeners are armed at attach time, not at lifespan
         # start, so a test that attaches a bus before issuing requests
         # gets handler invocations even before the first lifespan event.
-        _listener.start(make_buffered_handler(_recent_events))
+        _listener.start(_compose_handler())
     try:
         yield
     finally:
@@ -183,8 +202,8 @@ def readyz(response: Response) -> dict[str, Any]:
     if database_url:
         try:
             # Lazy import — only paid when DATABASE_URL is set.
-            from context_engine.pg_repository import PgEventRepository
             from context_engine.pg_customer_repository import make_connection_factory
+            from context_engine.pg_repository import PgEventRepository
 
             factory = make_connection_factory(database_url)
             PgEventRepository(factory).count()
@@ -264,6 +283,42 @@ def events_recent(
 
 
 # ----------------------------------------------------------------------------
+# /proposals/recent — diagnostic surface for the Day-9 planner.
+#
+# Mirrors /events/recent. Mandatory tenant_id, bounded per-tenant ring
+# buffer. The Day-10 audit log is the canonical record; this endpoint
+# exists for operator visibility during Phase 2 development.
+# ----------------------------------------------------------------------------
+
+
+@app.get("/proposals/recent", tags=["proposals"])
+def proposals_recent(
+    tenant_id: str = Query(..., min_length=1, max_length=64),
+    limit: int = Query(20, ge=1, le=100),
+) -> dict[str, Any]:
+    """Return the most recent action proposals the planner has emitted
+    for `tenant_id`.
+
+    Multi-tenant invariant: `tenant_id` is mandatory; tenants can never
+    see each other's proposals via this endpoint.
+
+    Each proposal includes `proposed_by` (`llm` | `fallback`) so the
+    operator can spot degraded planning at a glance — a streak of
+    `fallback` proposals signals either an LLM outage or a prompt
+    regression.
+    """
+    items = _recent_proposals.recent(tenant_id=tenant_id, limit=limit)
+    serialized = [p.model_dump(mode="json") for p in items]
+    return {
+        "tenant_id": tenant_id,
+        "limit": limit,
+        "count": len(serialized),
+        "proposals": serialized,
+        "listener_mode": _listener_mode,
+    }
+
+
+# ----------------------------------------------------------------------------
 # Test-only helpers. Not exported through OpenAPI; callers reach in through
 # the Python module path. Keeping these here (rather than in `tests/`) so the
 # in-memory wiring story is documented next to the production wiring.
@@ -271,7 +326,7 @@ def events_recent(
 
 
 def _reset_listener_for_tests() -> None:
-    """Drop the listener and clear the recent-events buffer.
+    """Drop the listener and clear the recent-events/proposals buffers.
 
     The Day-11 end-to-end test scaffolding uses this between scenarios to
     keep buffer state from one test from leaking into the next. NOT for
@@ -283,6 +338,7 @@ def _reset_listener_for_tests() -> None:
         _listener = None
     _listener_mode = "unattached"
     _recent_events.clear()
+    _recent_proposals.clear()
 
 
 def _current_listener_mode() -> str:
