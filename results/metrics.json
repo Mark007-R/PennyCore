@@ -168,9 +168,30 @@
         "imports_ok": true,
         "orch_routes": ["/", "/events/recent", "/healthz", "/proposals/recent", "/readyz"],
         "ce_routes": ["/", "/events", "/healthz", "/readyz"],
-        "docker_compose_up": "not re-verified today; no infra-layer changes since Day 8 verification — only application-level wiring in orchestrator/api.py + new orchestrator/planner.py module"
+        "docker_compose_up": "verified",
+        "containers_healthy": ["pennycore-postgres", "pennycore-redis", "pennycore-context-engine", "pennycore-orchestrator"],
+        "context_engine_root": {"datastore_mode": "postgres", "bus_mode": "redis", "llm_mode": "mock"},
+        "orchestrator_root": {"listener_mode": "redis", "llm_mode": "mock"},
+        "orchestrator_readyz": {"status": "ready", "probed": {"postgres": "ok", "redis": "ok"}}
       },
-      "notes": "Day 9 planner is mock-mode-only in the live system (placeholder ANTHROPIC_API_KEY); LLM path covered by fake-client tests. Real-LLM exercise deferred to user-driven key setup or Phase 3 benchmark days."
+      "end_to_end_planner_round_trip": {
+        "verified": true,
+        "method": "POST /events on context-engine (port 8001) -> Postgres write + Redis publish -> orchestrator listener thread -> chain_handlers fires both buffered + planning handlers -> GET /events/recent + GET /proposals/recent (port 8002)",
+        "scenarios_verified": [
+          {"event_type": "message_received", "expected_action": "send_borrower_message", "observed_action": "send_borrower_message", "proposed_by": "fallback"},
+          {"event_type": "anomaly_detected", "expected_action": "notify_loan_officer", "observed_action": "notify_loan_officer", "proposed_by": "fallback"},
+          {"event_type": "document_uploaded", "tenant_id": "beta-bank", "expected_action": "update_status", "observed_action": "update_status", "proposed_by": "fallback"}
+        ],
+        "multi_tenant_isolation_verified": {
+          "method": "ingested events for tenants 'acme' (2 events) and 'beta-bank' (1 event); queried /proposals/recent per tenant",
+          "acme_proposals_count": 2,
+          "acme_tenant_ids_observed": ["acme"],
+          "beta_bank_proposals_count": 1,
+          "beta_bank_tenant_ids_observed": ["beta-bank"],
+          "crossover_observed": false
+        }
+      },
+      "notes": "Day 9 planner is mock-mode-only in the live system (placeholder ANTHROPIC_API_KEY); LLM path covered by fake-client tests. Real-LLM exercise deferred to user-driven key setup or Phase 3 benchmark days. docker-compose up verification re-run after initial commit to close SKILL Step 4 'actually RUN the system' loop — the bind-mounted orchestrator/ directory picks up planner.py without rebuild."
     }
   ]
 }
