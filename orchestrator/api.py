@@ -1,10 +1,19 @@
 """orchestrator FastAPI app.
 
 Day 4 surface: `GET /` + `/healthz` + `/readyz` (scaffold).
-Day 8 surface (this file): wires the event listener at app startup, adds
+Day 8 surface: wires the event listener at app startup, adds
 `GET /events/recent` for diagnostic visibility into what the listener has
 received, and upgrades `/readyz` to probe Postgres + Redis when their
 respective env vars (`DATABASE_URL`, `REDIS_URL`) are set.
+Day 9 surface: `GET /proposals/recent` mirrors `/events/recent` for the
+planner's output.
+Day 10 surface (this file): the policy + queue + executor + audit
+pipeline lives behind `_pipeline`. The planner handler in the listener
+chain now forwards proposals into `_pipeline.handle_proposal()` so every
+inbound event runs the full decision flow. `GET /approvals` lists the
+tenant's pending queue; `POST /approvals/{action_id}/approve` and
+`POST /approvals/{action_id}/reject` resolve a pending row. The
+`/actions/{id}` endpoint exposes the full action + audit-trail view.
 
 Listener selection mirrors the context-engine's `DATABASE_URL` switch:
 
@@ -13,14 +22,16 @@ Listener selection mirrors the context-engine's `DATABASE_URL` switch:
     `InMemoryEventBus`. Tests inject the same bus the context-engine app
     uses so a publish on one side fires the orchestrator handler synchronously.
 
-Multi-tenant invariant (rule 15): `/events/recent` is mandatory `?tenant_id=`
-— there is no implicit "all tenants" view. The tenant-scoped ring buffer
-in `event_listener.RecentEventsBuffer` enforces isolation at the data layer
+Multi-tenant invariant (rule 15): every tenant-scoped endpoint takes a
+mandatory `?tenant_id=` — there is no implicit "all tenants" view. The
+pipeline + queue + audit log enforce tenant isolation at the data layer
 on top of the URL discipline.
 
-Audit invariant (rule 16): the action-execution pipeline lands Day 10. The
-diagnostic buffer here is NOT the audit log — it is bounded, in-memory, and
-explicitly for operator visibility, not for compliance review.
+Audit invariant (rule 16): every action proposal, approval, rejection,
+and execution writes to `_pipeline.audit`. The pipeline is the source of
+truth for compliance review; the bounded diagnostic buffers
+(`/events/recent`, `/proposals/recent`) exist for operator visibility,
+not for audit.
 """
 
 from __future__ import annotations
@@ -31,10 +42,20 @@ from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Query, Response, status
+from fastapi import FastAPI, HTTPException, Query, Response, status
 
 from context_engine.event_bus import InMemoryEventBus
 from context_engine.llm import get_client
+from contracts.actions import Action
+from orchestrator.approval_queue import (
+    ApprovalNotFoundError,
+    ApprovalStateError,
+)
+from orchestrator.decision_pipeline import (
+    ActionNotFoundError,
+    DecisionPipeline,
+    make_default_pipeline,
+)
 from orchestrator.event_listener import (
     EventListener,
     InMemoryEventListener,
@@ -60,20 +81,23 @@ load_dotenv()
 
 _recent_events: RecentEventsBuffer = RecentEventsBuffer()
 _recent_proposals: ProposalsBuffer = ProposalsBuffer()
+_pipeline: DecisionPipeline = make_default_pipeline()
 _listener: EventListener | None = None
 _listener_mode: str = "unattached"
 
 
 def _compose_handler() -> Any:
-    """Compose the Day-8 buffered handler with the Day-9 planner handler.
+    """Compose the Day-8 buffered handler with the Day-9 planner +
+    Day-10 pipeline.
 
-    Chained so a bug in either handler doesn't stop the other from
+    Chained so a bug in any handler doesn't stop the others from
     running (the listener invariant — handler exceptions are isolated).
-    Day 10 will append the policy + queue + audit handler to this chain.
+    The planning handler is the one wired to the pipeline; the buffered
+    handler stays alongside it for the `/events/recent` diagnostic view.
     """
     return chain_handlers(
         make_buffered_handler(_recent_events),
-        make_planning_handler(_recent_proposals),
+        make_planning_handler(_recent_proposals, pipeline=_pipeline),
     )
 
 
@@ -319,6 +343,132 @@ def proposals_recent(
 
 
 # ----------------------------------------------------------------------------
+# Action serialization helper. Centralized so /approvals, /actions, and the
+# takehome adapter all surface the same shape — diff-friendly across surfaces.
+# ----------------------------------------------------------------------------
+
+
+def _action_view(action: Action) -> dict[str, Any]:
+    """Render an `Action` for the HTTP surface, denormalizing the audit
+    trail and exposing the planner reasoning as a top-level field.
+
+    The `audit_trail` is a list of audit entries scoped to this action,
+    in insertion order — gives the admin UI / external reviewer a
+    one-call "what happened, when, by whom" view. The full audit log is
+    still available via `/audit/...` (lands Day 23 hardening); this
+    embedded view is the convenience surface.
+    """
+    audit_entries = _pipeline.audit_for_action(action.id)
+    audit_trail = [e.model_dump(mode="json") for e in audit_entries]
+    payload = dict(action.payload)
+    reasoning = payload.pop("_planner_reasoning", "")
+    executed_payload = payload.pop("_executed_payload", None)
+    return {
+        "action_id": action.id,
+        "tenant_id": action.tenant_id,
+        "event_id": action.event_id,
+        "proposal_id": action.proposal_id,
+        "customer_id": action.customer_id,
+        "action_type": action.action_type.value,
+        "status": action.status.value,
+        "reasoning": reasoning,
+        "payload": payload,
+        "executed_payload": executed_payload,
+        "created_at": action.created_at.isoformat(),
+        "updated_at": action.updated_at.isoformat(),
+        "executed_at": (
+            action.executed_at.isoformat() if action.executed_at else None
+        ),
+        "audit_trail": audit_trail,
+    }
+
+
+# ----------------------------------------------------------------------------
+# /approvals — list / approve / reject pending actions for a tenant.
+# ----------------------------------------------------------------------------
+
+
+@app.get("/approvals", tags=["approvals"])
+def approvals_list(
+    tenant_id: str = Query(..., min_length=1, max_length=64),
+) -> dict[str, Any]:
+    """List pending-approval actions for `tenant_id`.
+
+    Returns FIFO order — oldest first, which is what the admin UI's
+    "approve next" workflow wants.
+    """
+    pending = _pipeline.list_pending_actions(tenant_id)
+    return {
+        "tenant_id": tenant_id,
+        "count": len(pending),
+        "approvals": [_action_view(a) for a in pending],
+    }
+
+
+@app.post("/approvals/{action_id}/approve", tags=["approvals"])
+def approvals_approve(
+    action_id: str,
+    decided_by: str = Query("api", min_length=1, max_length=128),
+) -> dict[str, Any]:
+    """Approve a pending action. The pipeline executes it and writes
+    the approval + execution audit rows.
+
+    Errors:
+      * 404 — no such action or no pending row (already resolved /
+        never queued).
+      * 409 — the action is in a non-approvable state (race condition
+        — another approver beat us to it).
+    """
+    try:
+        action = _pipeline.approve_action(action_id, decided_by=decided_by)
+    except (ActionNotFoundError, ApprovalNotFoundError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ApprovalStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _action_view(action)
+
+
+@app.post("/approvals/{action_id}/reject", tags=["approvals"])
+def approvals_reject(
+    action_id: str,
+    reason: str = Query("", max_length=2048),
+    decided_by: str = Query("api", min_length=1, max_length=128),
+) -> dict[str, Any]:
+    """Reject a pending action. The pipeline transitions it to
+    `rejected` and writes the rejection audit row.
+
+    Same error contract as `/approvals/{action_id}/approve`.
+    """
+    try:
+        action = _pipeline.reject_action(
+            action_id, reason=reason, decided_by=decided_by
+        )
+    except (ActionNotFoundError, ApprovalNotFoundError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ApprovalStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _action_view(action)
+
+
+# ----------------------------------------------------------------------------
+# /actions — single-action lookup with full audit trail.
+# ----------------------------------------------------------------------------
+
+
+@app.get("/actions/{action_id}", tags=["actions"])
+def actions_get(action_id: str) -> dict[str, Any]:
+    """Fetch one action by ID. The audit trail is embedded.
+
+    Returns 404 if the action is unknown to this pipeline instance.
+    """
+    try:
+        action = _pipeline.get_action(action_id)
+    except ActionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _action_view(action)
+
+
+# ----------------------------------------------------------------------------
 # Test-only helpers. Not exported through OpenAPI; callers reach in through
 # the Python module path. Keeping these here (rather than in `tests/`) so the
 # in-memory wiring story is documented next to the production wiring.
@@ -326,10 +476,11 @@ def proposals_recent(
 
 
 def _reset_listener_for_tests() -> None:
-    """Drop the listener and clear the recent-events/proposals buffers.
+    """Drop the listener and clear the recent-events/proposals buffers
+    and the decision pipeline.
 
     The Day-11 end-to-end test scaffolding uses this between scenarios to
-    keep buffer state from one test from leaking into the next. NOT for
+    keep state from one test from leaking into the next. NOT for
     production callers.
     """
     global _listener, _listener_mode
@@ -339,8 +490,16 @@ def _reset_listener_for_tests() -> None:
     _listener_mode = "unattached"
     _recent_events.clear()
     _recent_proposals.clear()
+    _pipeline.clear()
 
 
 def _current_listener_mode() -> str:
     """Test introspection — returns the resolved listener mode label."""
     return _listener_mode
+
+
+def _get_pipeline_for_tests() -> DecisionPipeline:
+    """Test introspection — direct handle on the module-level pipeline
+    so unit tests can configure policies + drive the planner without
+    going through the HTTP surface."""
+    return _pipeline

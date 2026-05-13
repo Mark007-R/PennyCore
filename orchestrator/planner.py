@@ -394,6 +394,7 @@ def make_planning_handler(
     *,
     client_factory: Callable[[], LLMClient] = get_client,
     proposal_id_factory: Callable[[], str] = _default_proposal_id,
+    pipeline: Any | None = None,
 ) -> Callable[[dict[str, Any]], None]:
     """Build a listener handler that runs the planner on every envelope
     and appends the proposal to `proposals`.
@@ -401,6 +402,14 @@ def make_planning_handler(
     Composable with the Day-8 buffered handler via `chain_handlers`:
     the event_listener can route a single publish through multiple
     handlers without coupling the planner to the recent-events buffer.
+
+    `pipeline` (optional, Day 10): if supplied, the proposal also flows
+    into `pipeline.handle_proposal()` so the policy / queue / executor /
+    audit stages run on every received envelope. Typed as `Any | None`
+    to avoid a planner→pipeline import cycle (the pipeline depends on
+    the planner's contracts; the planner stays unaware of the pipeline
+    module). Tests pass `pipeline=None` to exercise the Day-9 surface
+    in isolation.
     """
 
     def _handle(envelope: dict[str, Any]) -> None:
@@ -424,6 +433,23 @@ def make_planning_handler(
             )
             return
         proposals.append(proposal)
+
+        if pipeline is not None:
+            try:
+                pipeline.handle_proposal(proposal)
+            except Exception as exc:
+                # Same isolation invariant as the planner call itself:
+                # a downstream pipeline bug must not poison the
+                # listener loop. The Day-10 audit log records the
+                # failure path (EXECUTION_FAILED), so we don't need to
+                # bubble.
+                _LOG.warning(
+                    "pipeline handler swallowed unexpected error (%s: %s) — "
+                    "event %r will need manual reconciliation",
+                    type(exc).__name__,
+                    exc,
+                    envelope.get("event_id"),
+                )
 
     return _handle
 

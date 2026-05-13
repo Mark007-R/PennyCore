@@ -89,12 +89,26 @@ def get_client() -> LLMClient:
                 stacklevel=2,
             )
             return MockClient()
-        from context_engine.llm.anthropic_client import AnthropicClient
+        try:
+            from context_engine.llm.anthropic_client import AnthropicClient
 
-        return AnthropicClient(
-            api_key=api_key or "",
-            model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
-        )
+            return AnthropicClient(
+                api_key=api_key or "",
+                model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
+            )
+        except ImportError as exc:
+            # The `anthropic` SDK is lazy-imported INSIDE the client's
+            # __init__, so the ImportError surfaces during construction
+            # rather than at the `from` line above. Catching both gives
+            # a clean fallback whether the lazy import lives in this
+            # module or in the client module.
+            warnings.warn(
+                f"LLM_PROVIDER=anthropic but the `anthropic` SDK is not "
+                f"installed ({exc}); falling back to MockClient. Run "
+                f"`pip install anthropic` to enable.",
+                stacklevel=2,
+            )
+            return MockClient()
 
     if provider == "azure":
         # Foundry Models endpoint preferred; classic Azure OpenAI Service as fallback.
@@ -111,14 +125,24 @@ def get_client() -> LLMClient:
                 stacklevel=2,
             )
             return MockClient()
-        from context_engine.llm.azure_client import AzureClient
+        try:
+            from context_engine.llm.azure_client import AzureClient
 
-        return AzureClient(
-            api_key=api_key or "",
-            endpoint=endpoint or "",
-            api_version=api_version,
-            model=model,
-        )
+            return AzureClient(
+                api_key=api_key or "",
+                endpoint=endpoint or "",
+                api_version=api_version,
+                model=model,
+            )
+        except ImportError as exc:
+            warnings.warn(
+                f"LLM_PROVIDER=azure but the `openai` SDK is not "
+                f"installed ({exc}); falling back to MockClient. Run "
+                f"`pip install openai` to enable the Azure Foundry / "
+                f"OpenAI-compatible path.",
+                stacklevel=2,
+            )
+            return MockClient()
 
     if provider == "openai":
         api_key = os.getenv("OPENAI_API_KEY")
@@ -129,12 +153,21 @@ def get_client() -> LLMClient:
                 stacklevel=2,
             )
             return MockClient()
-        from context_engine.llm.openai_client import OpenAIClient
+        try:
+            from context_engine.llm.openai_client import OpenAIClient
 
-        return OpenAIClient(
-            api_key=api_key or "",
-            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-        )
+            return OpenAIClient(
+                api_key=api_key or "",
+                model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            )
+        except ImportError as exc:
+            warnings.warn(
+                f"LLM_PROVIDER=openai but the `openai` SDK is not "
+                f"installed ({exc}); falling back to MockClient. Run "
+                f"`pip install openai` to enable.",
+                stacklevel=2,
+            )
+            return MockClient()
 
     # Explicit `mock` or unset → silent (the user knows). Unknown provider
     # value → warn so the misconfiguration is visible in logs / CI rather
