@@ -1,29 +1,45 @@
-"""context-engine FastAPI scaffold (Phase 1, Day 4).
+"""context-engine FastAPI app.
 
-Surface area today is intentionally minimal — three endpoints that prove
-the container boots, the package imports, and the service answers HTTP.
+Day 4 surface: `GET /` + `/healthz` + `/readyz` (scaffold).
+Day 5 surface (this file): adds `POST /events` — the ingestion front door.
 
-| Endpoint   | Purpose                                                       |
-|------------|---------------------------------------------------------------|
-| `GET /`    | Service identity + LLM mode (mock / anthropic / azure / openai) |
-| `/healthz` | Liveness probe — process is up. No external deps probed.       |
-| `/readyz`  | Readiness probe — Day 5 adds Postgres + Redis connectivity.    |
+The ingestion endpoint is intentionally tiny: parse → validate → ingest →
+respond. All the work happens in `context_engine.ingestion.ingest_event`
+which is bus-and-repo agnostic. The defaults here are the in-memory
+implementations (`InMemoryEventRepository`, `InMemoryEventBus`) so the
+container boots end-to-end without needing Postgres or Redis. Day 6+ swaps
+the defaults for the real Postgres-backed repository; Day 8 swaps the bus
+for Redis. Tests use FastAPI's `app.dependency_overrides` to inject fresh
+in-memory instances per test (see `tests/unit/test_ingestion.py`).
 
-The real surface lands Day 5 (`POST /events` ingestion + cross-channel
-linking) and Day 7 (`POST /briefs/assemble`). All future endpoints scope
-by `tenant_id` per the multi-tenant invariant (rule 15).
+Multi-tenant invariant (rule 15): every endpoint reads `tenant_id` from
+the request body / path / header — there is no implicit "default tenant".
 """
 
 from __future__ import annotations
 
 import os
+import warnings
 from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
+
+from context_engine.customer_repository import (
+    CustomerRepository,
+    InMemoryCustomerRepository,
+)
+from context_engine.event_bus import EventBus, InMemoryEventBus
+from context_engine.ingestion import (
+    IngestionRequest,
+    build_event_from_request,
+    ingest_event,
+)
+from context_engine.linking import resolve_customer
+from context_engine.llm import get_client
+from context_engine.repository import EventRepository, InMemoryEventRepository
 
 # `.env` lives at the project root and is loaded once at import time.
-# Loading is idempotent — calling it again from the orchestrator app is a no-op.
 load_dotenv()
 
 
@@ -34,46 +50,300 @@ app = FastAPI(
         "links customers across channels, and assembles a token-budgeted brief "
         "for the LLM before each reply."
     ),
-    version="0.1.0",
+    version="0.2.0",
 )
 
 
+# ----------------------------------------------------------------------------
+# Datastore selection — DATABASE_URL flips the entire stack to Postgres.
+#
+# When DATABASE_URL is set at import time, the module-level repositories
+# become the psycopg-backed adapters; otherwise they stay in-memory. The
+# FastAPI dependency wiring is identical either way (same Protocol shape),
+# so request handlers don't know or care which backend is live. Tests
+# always override via `dependency_overrides`, so the unit-test path is
+# unaffected by the deployer's `DATABASE_URL` value.
+# ----------------------------------------------------------------------------
+
+
+def _build_default_repos() -> tuple[
+    EventRepository, CustomerRepository, str
+]:
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        return (
+            InMemoryEventRepository(),
+            InMemoryCustomerRepository(),
+            "memory",
+        )
+
+    # Lazy imports — psycopg is only needed when DATABASE_URL is set.
+    from context_engine.pg_customer_repository import (
+        PgCustomerRepository,
+        make_connection_factory,
+    )
+    from context_engine.pg_repository import PgEventRepository
+
+    factory = make_connection_factory(database_url)
+    return (
+        PgEventRepository(factory),
+        PgCustomerRepository(factory),
+        "postgres",
+    )
+
+
+_default_repo: EventRepository
+_default_customer_repo: CustomerRepository
+_datastore_mode: str
+_default_repo, _default_customer_repo, _datastore_mode = _build_default_repos()
+
+
+def _build_default_bus() -> tuple[EventBus, str]:
+    """Pick the publish-side bus from env. Mirrors the orchestrator's
+    listener-mode selector: `REDIS_URL` set → `RedisEventBus`; unset →
+    `InMemoryEventBus` (the test path and any single-process scenario).
+
+    Day-8 end-to-end wiring lives here: if both services run with the
+    same `REDIS_URL` (as docker-compose configures), the orchestrator's
+    `RedisEventListener` actually receives what this bus publishes.
+    """
+    redis_url = os.getenv("REDIS_URL", "").strip()
+    if not redis_url:
+        return InMemoryEventBus(), "in-memory"
+
+    # Lazy import — keeps the test path psycopg-style: only paths that
+    # explicitly opt into Redis pay the import cost.
+    from context_engine.redis_event_bus import make_redis_event_bus
+
+    return make_redis_event_bus(redis_url), "redis"
+
+
+_default_bus: EventBus
+_bus_mode: str
+_default_bus, _bus_mode = _build_default_bus()
+
+
+def get_repo() -> EventRepository:
+    return _default_repo
+
+
+def get_bus() -> EventBus:
+    return _default_bus
+
+
+def get_customer_repo() -> CustomerRepository:
+    return _default_customer_repo
+
+
+# ----------------------------------------------------------------------------
+# Meta + health endpoints (Day 4 — unchanged shape, version + phase bumped).
+# ----------------------------------------------------------------------------
+
+
 def _llm_mode() -> str:
-    """Resolve the active LLM mode from env. Mirrors `context_engine/llm/__init__.py` (Day 5)."""
-    if os.getenv("MOCK_LLM", "").lower() in ("true", "1", "yes"):
-        return "mock"
-    return os.getenv("LLM_PROVIDER", "mock").lower()
+    """Report the *resolved* LLM client name — what `get_client()` would
+    actually return, including the placeholder-key → mock fallback. Reading
+    `LLM_PROVIDER` directly would lie under the `.env.example` defaults
+    (LLM_PROVIDER=anthropic + placeholder key), reporting `anthropic` while
+    the dispatch layer is actually returning MockClient.
+
+    Warnings are suppressed here because this is a hot diagnostic path
+    (called on every `GET /`); the dispatch layer still emits its warning
+    on the first real call site (planner / brief assembler / etc.).
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return get_client().name
 
 
 @app.get("/", tags=["meta"])
 def root() -> dict[str, Any]:
-    """Service identity + active LLM mode. Useful for the demo UI."""
     return {
         "service": "context-engine",
         "version": app.version,
         "llm_mode": _llm_mode(),
-        "status": "scaffold",
-        "phase": "1-foundation",
+        "status": "mvp",
+        "phase": "2-mvp-build",
+        "datastore_mode": _datastore_mode,
+        "bus_mode": _bus_mode,
     }
 
 
 @app.get("/healthz", tags=["health"])
 def healthz() -> dict[str, str]:
-    """Liveness probe — the process is up. No external dependencies probed."""
     return {"status": "ok"}
 
 
 @app.get("/readyz", tags=["health"])
-def readyz() -> dict[str, Any]:
+def readyz(response: Response) -> dict[str, Any]:
     """Readiness probe.
 
-    Today (Day 4): scaffold-only — always returns ready=true. Day 5 wires
-    real Postgres + Redis connectivity probes; until then the container can
-    start before its dependencies are healthy without flapping the readiness
-    signal.
+    In `memory` mode (no DATABASE_URL) the in-memory repo is always
+    ready and we don't probe anything. In `postgres` mode we open a
+    short-lived connection and run `SELECT 1` to confirm the database
+    is reachable AND that the schema is loaded (the `events` table
+    must exist; otherwise the migration runner hasn't been pointed at
+    this database yet). A failed probe returns 503 so kube/docker
+    readiness gates fail-closed.
+
+    Day 8 adds the Redis probe alongside the Postgres one.
     """
+    if _datastore_mode == "memory":
+        return {
+            "status": "ready",
+            "datastores_probed": False,
+            "datastore_mode": "memory",
+        }
+
+    # Postgres-mode probe — small, single round-trip.
+    try:
+        repo = _default_repo
+        # The narrowest live-connectivity check that also exercises the
+        # schema: count() runs `SELECT COUNT(*) FROM events`. If the
+        # table is missing the query raises and we fail-closed below.
+        repo.count()
+    except Exception as exc:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return {
+            "status": "not_ready",
+            "datastores_probed": True,
+            "datastore_mode": _datastore_mode,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
     return {
         "status": "ready",
-        "scaffold": True,
-        "datastores_probed": False,
+        "datastores_probed": True,
+        "datastore_mode": _datastore_mode,
+    }
+
+
+# ----------------------------------------------------------------------------
+# POST /events — the ingestion front door (Day 5).
+# ----------------------------------------------------------------------------
+
+
+@app.post("/events", tags=["ingestion"])
+def post_event(
+    request: IngestionRequest,
+    response: Response,
+    x_idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
+    repo: EventRepository = Depends(get_repo),
+    bus: EventBus = Depends(get_bus),
+    customer_repo: CustomerRepository = Depends(get_customer_repo),
+) -> dict[str, Any]:
+    """Accept an event from any channel.
+
+    Idempotency: callers MUST supply an idempotency key — either via the
+    `X-Idempotency-Key` HTTP header (preferred) or the `idempotency_key`
+    body field. If BOTH are present they MUST be equal: disagreement
+    returns `400 Bad Request` rather than silently letting one win,
+    because silent precedence would mask a bug in the upstream caller
+    (the SKILL §5.5 graceful-degradation rule values visible failures
+    over invisible drift). A repeat call with the same key returns
+    `200 OK` with `created=false` and the same `event_id` — never an
+    error.
+
+    Customer linking (Day 6): the request payload is scanned for identity
+    hints (`from_email`, `from_phone`, `external_id`, `chat_handle` and
+    aliases). The resolver matches against existing
+    `customer_identities` rows for this tenant in priority order
+    (external_id > email > phone > chat_handle); on no match a new
+    customer is created with all hints inserted as identities. The
+    response carries the resolved `customer_id` and `customer_created`
+    flag so callers can downstream-route based on whether this is a
+    first-contact event. An explicit `request.customer_id` for an
+    unknown customer in this tenant returns `404 Not Found`.
+
+    Status codes:
+      * `202 Accepted`  — new event accepted for processing.
+      * `200 OK`        — idempotent replay; existing event returned.
+      * `400 Bad Request` — no idempotency key supplied (header AND body
+                            empty) or header/body keys disagree.
+      * `404 Not Found` — explicit `customer_id` not found in this tenant.
+      * `422 Unprocessable Entity` — request body fails Pydantic validation
+                                     (handled by FastAPI automatically).
+    """
+    idem = x_idempotency_key or request.idempotency_key
+    if not idem:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "idempotency_key required: supply via X-Idempotency-Key "
+                "header or `idempotency_key` field in the request body"
+            ),
+        )
+
+    if (
+        x_idempotency_key
+        and request.idempotency_key
+        and x_idempotency_key != request.idempotency_key
+    ):
+        # Disagreement is a programmer error worth surfacing — silently
+        # picking one would mask the bug at the upstream caller.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Idempotency-Key header and body idempotency_key disagree",
+        )
+
+    # Replay short-circuit: if this idempotency key has already been seen
+    # for this tenant, skip the linker entirely and return the original
+    # event. Without this, a replay would re-run identity extraction
+    # against a (potentially tampered) replayed payload, which could
+    # pollute `customer_identities` even though the stored event is
+    # immutable. The Day-19 idempotency hardening tests will exercise the
+    # full race-safe path; for Day 6 the pre-check + post-check belt-and-
+    # braces is sufficient.
+    existing = repo.get_event_by_idempotency(
+        tenant_id=request.tenant_id, idempotency_key=idem
+    )
+    if existing is not None:
+        response.status_code = status.HTTP_200_OK
+        return {
+            "event_id": existing.id,
+            "tenant_id": existing.tenant_id,
+            "customer_id": existing.customer_id,
+            "customer_created": False,
+            "matched_identity": None,
+            "channel_code": existing.channel_code.value,
+            "event_type": existing.event_type.value,
+            "idempotency_key": existing.idempotency_key,
+            "received_at": existing.received_at.isoformat(),
+            "created": False,
+            "deduped": True,
+        }
+
+    try:
+        link = resolve_customer(request, customer_repo=customer_repo)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+
+    event = build_event_from_request(
+        request, idempotency_key=idem, customer_id=link.customer_id
+    )
+    result = ingest_event(event, repo=repo, bus=bus)
+
+    response.status_code = (
+        status.HTTP_202_ACCEPTED if result.created else status.HTTP_200_OK
+    )
+    return {
+        "event_id": result.event.id,
+        "tenant_id": result.event.tenant_id,
+        "customer_id": result.event.customer_id,
+        "customer_created": link.customer_created if result.created else False,
+        "matched_identity": (
+            {
+                "kind": link.matched_kind.value,
+                "value": link.matched_value,
+            }
+            if link.matched_kind is not None and result.created
+            else None
+        ),
+        "channel_code": result.event.channel_code.value,
+        "event_type": result.event.event_type.value,
+        "idempotency_key": result.event.idempotency_key,
+        "received_at": result.event.received_at.isoformat(),
+        "created": result.created,
+        "deduped": not result.created,
     }

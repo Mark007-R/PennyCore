@@ -1,0 +1,20 @@
+# Frozen SHA256 checksums of the takehome `evaluate.py` files.
+#
+# These files come from the external assessment repo and MUST NOT be
+# modified (rule 17 — TAKEHOME INVARIANT). The `pre-commit` hook in
+# this directory rejects any commit that mutates either file.
+#
+# If the external repo legitimately publishes a new evaluate.py, refresh
+# this file by running `scripts/refresh_evaluate_checksums.sh` and
+# committing the result in a SEPARATE commit with a clear message.
+#
+# Format: `<sha256>  <path>` (two spaces, matching `sha256sum` output).
+#
+# To install the hook locally (one-time per clone):
+#   git config core.hooksPath .githooks
+#
+# Verify the hook is wired:
+#   git config --get core.hooksPath
+#   # → .githooks
+3c6bc9850424363aaab46b941f9c8ac5b35e0c11579d3216bccbd51aac32e4c2 *takehome/context-engine/evaluate.py
+66894e09e70a133c859446538c73038f038ea5ecbf2bb9bb86048d2178815013 *takehome/orchestrator/evaluate.py

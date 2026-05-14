@@ -1,0 +1,453 @@
+{
+  "_about": "PennyCore \u00e2\u20ac\u201d append-only metrics journal. Each entry is a per-day snapshot; never overwrite past entries. Defined in SKILL Step 4 + the PRIMARY METRICS section. Initialized on Day 7 as a backfill (the journal was missed on Days 5 and 6 when the first measurable code shipped \u00e2\u20ac\u201d those days' numbers are NOT retroactively reconstructed; the day_05 and day_06 entries record only the binary 'feature shipped' fact so future readers know the journal started here). Comparison metrics (quality, cost, quality/$ ratios) start populating Day 12 when Phase 3 benchmarks land.",
+  "schema_version": 1,
+  "entries": [
+    {
+      "day": 5,
+      "phase": 2,
+      "date": "2026-05-08",
+      "component": "context_engine",
+      "feature": "ingestion_api",
+      "feature_shipped": true,
+      "tests_passing": 79,
+      "tests_added_today": 79,
+      "takehome_score": null,
+      "notes": "metrics journal not initialized this day; ingestion latency benchmarks not retroactively reconstructed."
+    },
+    {
+      "day": 6,
+      "phase": 2,
+      "date": "2026-05-09",
+      "component": "context_engine",
+      "feature": "cross_channel_linker_plus_postgres_adapters",
+      "feature_shipped": true,
+      "tests_passing": 146,
+      "tests_added_today": 67,
+      "takehome_score": null,
+      "notes": "metrics journal not initialized this day; linker resolution latency not retroactively reconstructed."
+    },
+    {
+      "day": 7,
+      "phase": 2,
+      "date": "2026-05-10",
+      "component": "context_engine",
+      "feature": "brief_assembly_recency_baseline_plus_takehome_adapter",
+      "feature_shipped": true,
+      "tests_passing": 176,
+      "tests_added_today": 40,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset; PG-integration tests gated",
+      "coverage_touched_modules_pct": {
+        "context_engine.brief_assembly": 92,
+        "context_engine.retrieval": 100,
+        "context_engine.retrieval.recency": 98,
+        "total_touched": 96
+      },
+      "brief_assembly_latency_ms": {
+        "p50": 0.43,
+        "p95": 0.621,
+        "p99": 0.906,
+        "samples": 100,
+        "input_shape": "50 messages + 2 actions",
+        "token_budget": 2000,
+        "llm_mode": "mock",
+        "notes": "pure Python sort + greedy pack; no LLM call; recency strategy"
+      },
+      "tokens_in_brief_vs_naive": {
+        "brief_tokens": 1570,
+        "naive_tokens": 1059,
+        "ratio": 1.483,
+        "interpretation": "at budget=2000 with 50-message history, the recency brief is LARGER than naive concat because it adds channel markers, timestamps, and action segments that naive concat omits. The ratio<1 win the Phase 3 hybrid is supposed to deliver only kicks in when the borrower history exceeds the budget \u00e2\u20ac\u201d the 200-history-pair benchmark on Day 12 quantifies that."
+      },
+      "takehome_score": {
+        "context_engine": {
+          "scenarios_passed": 5,
+          "scenarios_total": 6,
+          "scenarios_passed_ids": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "scenario_6_status": "fail_no_openai_module",
+          "evaluator_exit_code": 0,
+          "self_rubric_estimate_core_42": 29,
+          "self_rubric_estimate_with_bonuses": 32
+        },
+        "orchestrator": null
+      },
+      "system_boot": {
+        "docker_compose_up": "verified",
+        "containers_healthy": [
+          "pennycore-postgres",
+          "pennycore-redis",
+          "pennycore-context-engine",
+          "pennycore-orchestrator"
+        ],
+        "context_engine_healthz": "200 ok",
+        "orchestrator_healthz": "200 ok"
+      }
+    },
+    {
+      "day": 8,
+      "phase": 2,
+      "date": "2026-05-11",
+      "component": "orchestrator",
+      "feature": "event_listener_redis_subscriber_plus_context_engine_redis_publisher",
+      "feature_shipped": true,
+      "tests_passing": 206,
+      "tests_added_today": 30,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset for PG-integration tests; all gating unchanged from Day 7",
+      "coverage_touched_modules_pct": {
+        "context_engine.event_bus": 90,
+        "context_engine.redis_event_bus": 83,
+        "orchestrator.event_listener": 90,
+        "orchestrator.api": 71,
+        "total_touched": 83,
+        "uncovered_branches_note": "live-broker paths: make_redis_event_bus URL factory, lifespan redis-mode bootstrap, Postgres /readyz probe, defensive except in the Redis pump. Exercised on docker compose up (verified below), not in unit tests by design."
+      },
+      "takehome_score": {
+        "context_engine": null,
+        "orchestrator": null,
+        "note": "no takehome run today; next scheduled Day 10 (orchestrator adapter) + Day 11 (phase wrap re-run)"
+      },
+      "system_boot": {
+        "docker_compose_up": "verified",
+        "containers_healthy": [
+          "pennycore-postgres",
+          "pennycore-redis",
+          "pennycore-context-engine",
+          "pennycore-orchestrator"
+        ],
+        "context_engine_healthz": "200 ok",
+        "orchestrator_healthz": "200 ok",
+        "context_engine_root": {
+          "datastore_mode": "postgres",
+          "bus_mode": "redis"
+        },
+        "orchestrator_root": {
+          "listener_mode": "redis"
+        },
+        "orchestrator_readyz": {
+          "status": "ready",
+          "probed": {
+            "postgres": "ok",
+            "redis": "ok"
+          }
+        }
+      },
+      "end_to_end_redis_round_trip": {
+        "verified": true,
+        "method": "POST /events on context-engine (port 8001) -> Redis Pub/Sub channel events.acme -> orchestrator listener thread -> GET /events/recent?tenant_id=acme (port 8002)",
+        "event_id_published": "evt_963ff24cf2914a90b1318adf",
+        "event_id_received": "evt_963ff24cf2914a90b1318adf",
+        "round_trip_latency_observed_sec": "<1 (sleep 1 between publish and recent-read; not microbenchmarked today)",
+        "tenant_seeded": "INSERT INTO tenants (id, name, slug) VALUES ('acme', 'Acme Bank', 'acme-bank') \u00e2\u20ac\u201d required by Day-3 schema FK"
+      },
+      "notes": "Day 8 task was orchestrator-side subscriber, but verification revealed the publish side was still hardcoded to InMemoryEventBus. Added context-engine REDIS_URL bus dispatcher (3 new tests) so the two halves actually share a wire. Live docker stack confirms publish-to-Redis -> subscribe-from-Redis -> /events/recent works end-to-end."
+    },
+    {
+      "day": 9,
+      "phase": 2,
+      "date": "2026-05-12",
+      "component": "orchestrator",
+      "feature": "llm_planner_plus_proposals_endpoint",
+      "feature_shipped": true,
+      "tests_passing": 239,
+      "tests_added_today": 33,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset for PG-integration tests; gating unchanged from Day 7",
+      "modules_added": [
+        "orchestrator/planner.py"
+      ],
+      "endpoints_added": [
+        "GET /proposals/recent"
+      ],
+      "planner_design": {
+        "tool_call_shape": "strict-JSON prompt + post-parse + Pydantic ActionType enum validation",
+        "rationale": "provider-portable across Anthropic/Azure/OpenAI without coupling to any one tool-call SDK",
+        "fallback_rules": {
+          "message_received": "send_borrower_message",
+          "document_uploaded": "update_status",
+          "status_changed": "notify_loan_officer",
+          "anomaly_detected": "notify_loan_officer",
+          "system_event": "no_op",
+          "unknown": "notify_loan_officer (conservative default \u00e2\u20ac\u201d escalate to human)"
+        },
+        "fallback_signal": "ActionProposal.proposed_by = ProposedBy.FALLBACK on any LLM failure (network, JSON parse, schema violation, unknown action_type)"
+      },
+      "handler_chain": [
+        "make_buffered_handler(_recent_events)  \u00e2\u20ac\u201d Day 8",
+        "make_planning_handler(_recent_proposals)  \u00e2\u20ac\u201d Day 9"
+      ],
+      "takehome_score": {
+        "context_engine": null,
+        "orchestrator": null,
+        "note": "no takehome run today; next scheduled Day 10 (orchestrator adapter) + Day 11 (phase wrap re-run)"
+      },
+      "system_boot": {
+        "imports_ok": true,
+        "orch_routes": [
+          "/",
+          "/events/recent",
+          "/healthz",
+          "/proposals/recent",
+          "/readyz"
+        ],
+        "ce_routes": [
+          "/",
+          "/events",
+          "/healthz",
+          "/readyz"
+        ],
+        "docker_compose_up": "verified",
+        "containers_healthy": [
+          "pennycore-postgres",
+          "pennycore-redis",
+          "pennycore-context-engine",
+          "pennycore-orchestrator"
+        ],
+        "context_engine_root": {
+          "datastore_mode": "postgres",
+          "bus_mode": "redis",
+          "llm_mode": "mock"
+        },
+        "orchestrator_root": {
+          "listener_mode": "redis",
+          "llm_mode": "mock"
+        },
+        "orchestrator_readyz": {
+          "status": "ready",
+          "probed": {
+            "postgres": "ok",
+            "redis": "ok"
+          }
+        }
+      },
+      "end_to_end_planner_round_trip": {
+        "verified": true,
+        "method": "POST /events on context-engine (port 8001) -> Postgres write + Redis publish -> orchestrator listener thread -> chain_handlers fires both buffered + planning handlers -> GET /events/recent + GET /proposals/recent (port 8002)",
+        "scenarios_verified": [
+          {
+            "event_type": "message_received",
+            "expected_action": "send_borrower_message",
+            "observed_action": "send_borrower_message",
+            "proposed_by": "fallback"
+          },
+          {
+            "event_type": "anomaly_detected",
+            "expected_action": "notify_loan_officer",
+            "observed_action": "notify_loan_officer",
+            "proposed_by": "fallback"
+          },
+          {
+            "event_type": "document_uploaded",
+            "tenant_id": "beta-bank",
+            "expected_action": "update_status",
+            "observed_action": "update_status",
+            "proposed_by": "fallback"
+          }
+        ],
+        "multi_tenant_isolation_verified": {
+          "method": "ingested events for tenants 'acme' (2 events) and 'beta-bank' (1 event); queried /proposals/recent per tenant",
+          "acme_proposals_count": 2,
+          "acme_tenant_ids_observed": [
+            "acme"
+          ],
+          "beta_bank_proposals_count": 1,
+          "beta_bank_tenant_ids_observed": [
+            "beta-bank"
+          ],
+          "crossover_observed": false
+        }
+      },
+      "notes": "Day 9 planner is mock-mode-only in the live system (placeholder ANTHROPIC_API_KEY); LLM path covered by fake-client tests. Real-LLM exercise deferred to user-driven key setup or Phase 3 benchmark days. docker-compose up verification re-run after initial commit to close SKILL Step 4 'actually RUN the system' loop \u00e2\u20ac\u201d the bind-mounted orchestrator/ directory picks up planner.py without rebuild."
+    },
+    {
+      "day": 10,
+      "phase": 2,
+      "date": "2026-05-13",
+      "component": "orchestrator",
+      "feature": "policy_engine_plus_approval_queue_plus_executor_plus_audit_plus_takehome_adapter",
+      "feature_shipped": true,
+      "tests_passing": 323,
+      "tests_added_today": 84,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset for PG-integration tests; gating unchanged from prior days",
+      "modules_added": [
+        "orchestrator/policy/__init__.py",
+        "orchestrator/policy/declarative.py",
+        "orchestrator/approval_queue.py",
+        "orchestrator/executor.py",
+        "orchestrator/audit.py",
+        "orchestrator/decision_pipeline.py",
+        "takehome/orchestrator/orchestrator_impl.py"
+      ],
+      "endpoints_added": [
+        "GET /approvals?tenant_id=...",
+        "POST /approvals/{action_id}/approve",
+        "POST /approvals/{action_id}/reject",
+        "GET /actions/{action_id}"
+      ],
+      "pipeline_design": {
+        "flow": "planner.ActionProposal -> policy.PolicyEngine.decide -> {AUTO: execute, APPROVAL_REQUIRED: enqueue, REJECT: mark} -> audit.AuditLogEntry per transition",
+        "engines_implemented": [
+          "DeclarativePolicyEngine (champion for Phase 2)"
+        ],
+        "engines_pending_phase3": [
+          "python_rules",
+          "llm_judge",
+          "naive"
+        ],
+        "audit_kinds_emitted": [
+          "proposal",
+          "decision",
+          "approval",
+          "rejection",
+          "execution",
+          "execution_failed"
+        ],
+        "idempotency_key": "(tenant_id, event_id) dedup index in pipeline; mirrors planned Postgres UNIQUE constraint per SYSTEM_DESIGN \u00a75.1",
+        "failure_isolation": "executor exception -> EXECUTION_FAILED audit + status, no exception leaks to caller; planner LLM failure -> rule-table fallback (Day 9 behavior)"
+      },
+      "takehome_score": {
+        "context_engine": null,
+        "orchestrator": "6/6",
+        "orchestrator_run": "cd takehome/orchestrator && python evaluate.py orchestrator_impl.PennyCoreOrchestrator",
+        "note": "All 6 evaluator scenarios pass: basic flow, policy gating, approval lifecycle, idempotency, multi-tenant isolation, audit & reasoning. Planner runs in mock-fallback mode in sandbox (openai SDK absent); production run with LLM_PROVIDER=azure uses the live Foundry endpoint."
+      },
+      "defensive_change": {
+        "file": "context_engine/llm/__init__.py",
+        "what": "get_client() now catches ImportError around provider SDK construction and falls back to MockClient with a clear warning",
+        "why": "production already has the SDKs (requirements.txt pins anthropic + openai); the fallback is for offline/sandbox runs and for graceful degradation when a future user forgets pip install. Same shape as the existing placeholder-key fallback."
+      },
+      "notes": "ONE PR per phase invariant: this is a mid-phase commit on phase/2-mvp-build. The /approvals + /actions surface is exercised by 10 endpoint tests + the takehome evaluator. Day 11 (phase wrap) re-runs both takehome evaluators and locks in the Phase 2 champion strategies."
+    },
+    {
+      "day": 11,
+      "phase": 2,
+      "date": "2026-05-14",
+      "component": "system",
+      "feature": "end_to_end_jane_mortgage_scenario_plus_phase2_wrap",
+      "feature_shipped": true,
+      "tests_passing": 326,
+      "tests_added_today": 3,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset for PG-integration tests; gating unchanged from prior days",
+      "modules_added": [
+        "tests/integration/test_end_to_end_jane_scenario.py"
+      ],
+      "modules_changed": [
+        "scripts/run_takehome_evals.sh"
+      ],
+      "e2e_jane_scenario_in_process": {
+        "verified": true,
+        "method": "TestClient(context_engine.api.app) + TestClient(orchestrator.api.app) share one InMemoryEventBus via attach_in_memory_bus; 5 events POSTed for Jane (acme-bank, 3 channels: chat/email/sms + 2 api ops) + 1 event for beta-bank + 1 idempotent replay",
+        "tests": [
+          "test_jane_mortgage_end_to_end_happy_path",
+          "test_jane_mortgage_idempotent_redelivery_no_double_action",
+          "test_jane_mortgage_multi_tenant_isolation_acme_vs_beta"
+        ],
+        "test_runtime_sec": 1.20,
+        "policy_table_acme_bank": {
+          "send_borrower_message": "approval_required",
+          "notify_loan_officer": "auto",
+          "request_document": "approval_required",
+          "schedule_call": "approval_required",
+          "update_status": "auto",
+          "no_op": "auto"
+        },
+        "policy_table_beta_bank": {"*": "auto"},
+        "happy_path_assertions": [
+          "5 events landed on /events/recent for tenant acme-bank",
+          "5 proposals landed on /proposals/recent for tenant acme-bank",
+          "cross-channel linker unified all 5 events to one customer_id",
+          "2 actions queued (the two send_borrower_message), 3 auto-executed",
+          "approving first pending action -> status=executed",
+          "audit trail = ['proposal','decision','approval','execution'] on approved action"
+        ]
+      },
+      "e2e_jane_scenario_docker_compose": {
+        "verified": true,
+        "stack": "pennycore-postgres + pennycore-redis + pennycore-context-engine + pennycore-orchestrator (all 4 healthy)",
+        "method": "5 events POSTed to context-engine (port 8001) for tenant 'acme' across chat/email/sms/api channels + 1 event for 'beta-bank' + 1 idempotent replay of jane-001; full pipeline (POST -> Postgres write -> Redis publish -> orchestrator listener -> chain_handlers -> Day-10 pipeline -> approval queue + audit log) exercised live",
+        "ce_root": {
+          "datastore_mode": "postgres",
+          "bus_mode": "redis",
+          "llm_mode": "mock"
+        },
+        "orch_root": {
+          "listener_mode": "redis",
+          "llm_mode": "mock"
+        },
+        "readyz_orchestrator": {
+          "status": "ready",
+          "probed": {"postgres": "ok", "redis": "ok"}
+        },
+        "live_counts_acme": {
+          "events_received": 5,
+          "proposals_emitted": 5,
+          "unique_customer_ids_after_linking": 1,
+          "approvals_pending_initial": 5,
+          "approvals_pending_after_one_approve": 4
+        },
+        "live_counts_beta_bank": {
+          "events_received": 1,
+          "approvals_pending": 1
+        },
+        "isolation_verified": "acme customer_id (cust_4a3c7166...) disjoint from beta-bank customer_id (cust_92eee230...); action_id sets disjoint per-tenant",
+        "idempotency_verified": "second POST with idempotency_key=live-jane-001 returned created=false deduped=true; orchestrator received 5 events not 6",
+        "approve_path_verified": "POST /approvals/{id}/approve transitioned status to 'executed' and audit_trail captured [proposal, decision, approval, execution]",
+        "note": "live stack runs MOCK_LLM=true so planner emits rule-table-fallback proposals; the in-process E2E test exercises the same code paths against the same fallback path, so live-vs-test parity is intact. Live default-policy for acme is APPROVAL_REQUIRED (no docker-compose policy seeding shipped this phase — Phase 4 hardening adds a startup hook to load tenant policies from the policies table)"
+      },
+      "takehome_score": {
+        "context_engine": {
+          "scenarios_passed": 5,
+          "scenarios_total": 6,
+          "scenarios_passed_ids": [1, 2, 3, 4, 5],
+          "scenario_6_status": "fail_no_openai_module",
+          "evaluator_exit_code": 0,
+          "effective_pass_rate": "5/5 non-LLM (unchanged from Day 7)"
+        },
+        "orchestrator": {
+          "scenarios_passed": 6,
+          "scenarios_total": 6,
+          "scenarios_passed_ids": [1, 2, 3, 4, 5, 6],
+          "evaluator_exit_code": 0,
+          "effective_pass_rate": "6/6 (unchanged from Day 10)"
+        },
+        "command_used": "bash scripts/run_takehome_evals.sh",
+        "run_takehome_evals_fix": "Day-11 patched the script to pass 'orchestrator_impl.PennyCoreOrchestrator' on argv so the orchestrator evaluator runs cleanly (Day-10 left this as a manual cd && python evaluate.py call)"
+      },
+      "phase_2_wrap_up": {
+        "final_metrics_locked": {
+          "tests_total_green": 326,
+          "tests_total_skipped_gated": 10,
+          "tests_full_suite_runtime_sec": 1.93,
+          "takehome_context_engine": "5/6 (5/5 non-LLM)",
+          "takehome_orchestrator": "6/6",
+          "docker_compose_boot": "verified — all 4 containers healthy",
+          "e2e_round_trip_in_process": "verified — 3 tests green",
+          "e2e_round_trip_live_docker": "verified — Jane scenario end-to-end through Redis + Postgres"
+        },
+        "champion_strategies_locked": {
+          "ingestion": "FastAPI POST /events with X-Idempotency-Key header + (tenant_id, idempotency_key) UNIQUE oracle",
+          "linking": "priority-walk external_id > email > phone > chat_handle against (tenant_id, identity_kind, identity_value) UNIQUE",
+          "datastore": "Postgres via DATABASE_URL switch; in-memory adapters share the same Protocol shape so tests stay cheap",
+          "bus": "Redis Pub/Sub via REDIS_URL switch; channel naming events.<tenant_id>; envelope is small (event_id + tenant_id + customer_id + channel_code + event_type + received_at) to keep PII off the wire",
+          "brief_assembly": "recency-only Day-7 baseline (Phase 3 swaps for hybrid champion)",
+          "planner": "strict-JSON prompt + post-parse + Pydantic ActionType enum validation; rule-table fallback (ProposedBy.FALLBACK)",
+          "policy": "DeclarativePolicyEngine (dict-backed) with exact > default > * > APPROVAL_REQUIRED resolution",
+          "queue": "InMemoryApprovalQueue (Protocol shape; Phase 4 swap to PgApprovalQueue)",
+          "executor": "table-driven mock executors keyed by ActionType; failure surfaces as EXECUTION_FAILED audit row",
+          "audit": "InMemoryAuditLog at the Python layer + append-only Postgres trigger (migration 0002) at the DB layer; defense in depth",
+          "decision_pipeline": "(tenant_id, event_id) dedup index keying the Day-10 pipeline; one-event-one-action invariant"
+        },
+        "carries_to_phase_3": "Champion = (declarative policy + recency-only retrieval). Phase 3 Days 12-15 build the context-engine benchmark dataset (200 history+query pairs) and implement strategies 1-5 (Naive/Recency/Semantic/Summarized/Hybrid); Days 16-18 the orchestrator policy-engine comparison (Naive-LLM/YAML/Python-rules/LLM-judge). All four orchestrator engines drop into the existing PolicyEngine Protocol without touching the pipeline."
+      },
+      "notes": "Phase 2 wraps clean. The Day-11 deliverable is a single in-process E2E test module (3 tests) + a one-line fix to the takehome runner + the canonical scorecard re-run. NO new production code today by design — the phase wrap day is for locking in numbers, not introducing risk. Full suite 326/326 green (up from 323 Day-10) confirms no regressions. Live docker-compose verification adds a redundant signal that the in-process test isn't lying about what production does."
+    }
+  ]
+}
