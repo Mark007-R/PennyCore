@@ -37,6 +37,13 @@ run_evaluator() {
     local name="$1"
     local dir="$2"
     local adapter="$3"
+    # Optional 4th arg: "module.Class" target passed on argv. The
+    # context-engine evaluator auto-imports its adapter so the argument
+    # is unused there; the orchestrator evaluator is strict on
+    # `python evaluate.py your_module.YourClass` and exits non-zero
+    # without it. Day-11 fix: pass the target explicitly so the
+    # Phase-2 wrap can run both evaluators from one command.
+    local target="${4:-}"
 
     echo ""
     echo "================================================================"
@@ -60,7 +67,11 @@ run_evaluator() {
     # `importlib.import_module("<adapter>")` call resolves correctly.
     (
         cd "${dir}"
-        "${PYTHON}" evaluate.py
+        if [[ -n "${target}" ]]; then
+            "${PYTHON}" evaluate.py "${target}"
+        else
+            "${PYTHON}" evaluate.py
+        fi
     )
     local rc=$?
     if [[ ${rc} -eq 0 ]]; then
@@ -72,7 +83,8 @@ run_evaluator() {
 }
 
 run_evaluator "context-engine evaluator" "takehome/context-engine" "memory_system.py"
-run_evaluator "orchestrator evaluator"  "takehome/orchestrator"   "orchestrator_impl.py"
+run_evaluator "orchestrator evaluator"  "takehome/orchestrator"   "orchestrator_impl.py" \
+    "orchestrator_impl.PennyCoreOrchestrator"
 
 echo ""
 echo "----------------------------------------------------------------"

@@ -324,6 +324,130 @@
         "why": "production already has the SDKs (requirements.txt pins anthropic + openai); the fallback is for offline/sandbox runs and for graceful degradation when a future user forgets pip install. Same shape as the existing placeholder-key fallback."
       },
       "notes": "ONE PR per phase invariant: this is a mid-phase commit on phase/2-mvp-build. The /approvals + /actions surface is exercised by 10 endpoint tests + the takehome evaluator. Day 11 (phase wrap) re-runs both takehome evaluators and locks in the Phase 2 champion strategies."
+    },
+    {
+      "day": 11,
+      "phase": 2,
+      "date": "2026-05-14",
+      "component": "system",
+      "feature": "end_to_end_jane_mortgage_scenario_plus_phase2_wrap",
+      "feature_shipped": true,
+      "tests_passing": 326,
+      "tests_added_today": 3,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset for PG-integration tests; gating unchanged from prior days",
+      "modules_added": [
+        "tests/integration/test_end_to_end_jane_scenario.py"
+      ],
+      "modules_changed": [
+        "scripts/run_takehome_evals.sh"
+      ],
+      "e2e_jane_scenario_in_process": {
+        "verified": true,
+        "method": "TestClient(context_engine.api.app) + TestClient(orchestrator.api.app) share one InMemoryEventBus via attach_in_memory_bus; 5 events POSTed for Jane (acme-bank, 3 channels: chat/email/sms + 2 api ops) + 1 event for beta-bank + 1 idempotent replay",
+        "tests": [
+          "test_jane_mortgage_end_to_end_happy_path",
+          "test_jane_mortgage_idempotent_redelivery_no_double_action",
+          "test_jane_mortgage_multi_tenant_isolation_acme_vs_beta"
+        ],
+        "test_runtime_sec": 1.20,
+        "policy_table_acme_bank": {
+          "send_borrower_message": "approval_required",
+          "notify_loan_officer": "auto",
+          "request_document": "approval_required",
+          "schedule_call": "approval_required",
+          "update_status": "auto",
+          "no_op": "auto"
+        },
+        "policy_table_beta_bank": {"*": "auto"},
+        "happy_path_assertions": [
+          "5 events landed on /events/recent for tenant acme-bank",
+          "5 proposals landed on /proposals/recent for tenant acme-bank",
+          "cross-channel linker unified all 5 events to one customer_id",
+          "2 actions queued (the two send_borrower_message), 3 auto-executed",
+          "approving first pending action -> status=executed",
+          "audit trail = ['proposal','decision','approval','execution'] on approved action"
+        ]
+      },
+      "e2e_jane_scenario_docker_compose": {
+        "verified": true,
+        "stack": "pennycore-postgres + pennycore-redis + pennycore-context-engine + pennycore-orchestrator (all 4 healthy)",
+        "method": "5 events POSTed to context-engine (port 8001) for tenant 'acme' across chat/email/sms/api channels + 1 event for 'beta-bank' + 1 idempotent replay of jane-001; full pipeline (POST -> Postgres write -> Redis publish -> orchestrator listener -> chain_handlers -> Day-10 pipeline -> approval queue + audit log) exercised live",
+        "ce_root": {
+          "datastore_mode": "postgres",
+          "bus_mode": "redis",
+          "llm_mode": "mock"
+        },
+        "orch_root": {
+          "listener_mode": "redis",
+          "llm_mode": "mock"
+        },
+        "readyz_orchestrator": {
+          "status": "ready",
+          "probed": {"postgres": "ok", "redis": "ok"}
+        },
+        "live_counts_acme": {
+          "events_received": 5,
+          "proposals_emitted": 5,
+          "unique_customer_ids_after_linking": 1,
+          "approvals_pending_initial": 5,
+          "approvals_pending_after_one_approve": 4
+        },
+        "live_counts_beta_bank": {
+          "events_received": 1,
+          "approvals_pending": 1
+        },
+        "isolation_verified": "acme customer_id (cust_4a3c7166...) disjoint from beta-bank customer_id (cust_92eee230...); action_id sets disjoint per-tenant",
+        "idempotency_verified": "second POST with idempotency_key=live-jane-001 returned created=false deduped=true; orchestrator received 5 events not 6",
+        "approve_path_verified": "POST /approvals/{id}/approve transitioned status to 'executed' and audit_trail captured [proposal, decision, approval, execution]",
+        "note": "live stack runs MOCK_LLM=true so planner emits rule-table-fallback proposals; the in-process E2E test exercises the same code paths against the same fallback path, so live-vs-test parity is intact. Live default-policy for acme is APPROVAL_REQUIRED (no docker-compose policy seeding shipped this phase — Phase 4 hardening adds a startup hook to load tenant policies from the policies table)"
+      },
+      "takehome_score": {
+        "context_engine": {
+          "scenarios_passed": 5,
+          "scenarios_total": 6,
+          "scenarios_passed_ids": [1, 2, 3, 4, 5],
+          "scenario_6_status": "fail_no_openai_module",
+          "evaluator_exit_code": 0,
+          "effective_pass_rate": "5/5 non-LLM (unchanged from Day 7)"
+        },
+        "orchestrator": {
+          "scenarios_passed": 6,
+          "scenarios_total": 6,
+          "scenarios_passed_ids": [1, 2, 3, 4, 5, 6],
+          "evaluator_exit_code": 0,
+          "effective_pass_rate": "6/6 (unchanged from Day 10)"
+        },
+        "command_used": "bash scripts/run_takehome_evals.sh",
+        "run_takehome_evals_fix": "Day-11 patched the script to pass 'orchestrator_impl.PennyCoreOrchestrator' on argv so the orchestrator evaluator runs cleanly (Day-10 left this as a manual cd && python evaluate.py call)"
+      },
+      "phase_2_wrap_up": {
+        "final_metrics_locked": {
+          "tests_total_green": 326,
+          "tests_total_skipped_gated": 10,
+          "tests_full_suite_runtime_sec": 1.93,
+          "takehome_context_engine": "5/6 (5/5 non-LLM)",
+          "takehome_orchestrator": "6/6",
+          "docker_compose_boot": "verified — all 4 containers healthy",
+          "e2e_round_trip_in_process": "verified — 3 tests green",
+          "e2e_round_trip_live_docker": "verified — Jane scenario end-to-end through Redis + Postgres"
+        },
+        "champion_strategies_locked": {
+          "ingestion": "FastAPI POST /events with X-Idempotency-Key header + (tenant_id, idempotency_key) UNIQUE oracle",
+          "linking": "priority-walk external_id > email > phone > chat_handle against (tenant_id, identity_kind, identity_value) UNIQUE",
+          "datastore": "Postgres via DATABASE_URL switch; in-memory adapters share the same Protocol shape so tests stay cheap",
+          "bus": "Redis Pub/Sub via REDIS_URL switch; channel naming events.<tenant_id>; envelope is small (event_id + tenant_id + customer_id + channel_code + event_type + received_at) to keep PII off the wire",
+          "brief_assembly": "recency-only Day-7 baseline (Phase 3 swaps for hybrid champion)",
+          "planner": "strict-JSON prompt + post-parse + Pydantic ActionType enum validation; rule-table fallback (ProposedBy.FALLBACK)",
+          "policy": "DeclarativePolicyEngine (dict-backed) with exact > default > * > APPROVAL_REQUIRED resolution",
+          "queue": "InMemoryApprovalQueue (Protocol shape; Phase 4 swap to PgApprovalQueue)",
+          "executor": "table-driven mock executors keyed by ActionType; failure surfaces as EXECUTION_FAILED audit row",
+          "audit": "InMemoryAuditLog at the Python layer + append-only Postgres trigger (migration 0002) at the DB layer; defense in depth",
+          "decision_pipeline": "(tenant_id, event_id) dedup index keying the Day-10 pipeline; one-event-one-action invariant"
+        },
+        "carries_to_phase_3": "Champion = (declarative policy + recency-only retrieval). Phase 3 Days 12-15 build the context-engine benchmark dataset (200 history+query pairs) and implement strategies 1-5 (Naive/Recency/Semantic/Summarized/Hybrid); Days 16-18 the orchestrator policy-engine comparison (Naive-LLM/YAML/Python-rules/LLM-judge). All four orchestrator engines drop into the existing PolicyEngine Protocol without touching the pipeline."
+      },
+      "notes": "Phase 2 wraps clean. The Day-11 deliverable is a single in-process E2E test module (3 tests) + a one-line fix to the takehome runner + the canonical scorecard re-run. NO new production code today by design — the phase wrap day is for locking in numbers, not introducing risk. Full suite 326/326 green (up from 323 Day-10) confirms no regressions. Live docker-compose verification adds a redundant signal that the in-process test isn't lying about what production does."
     }
   ]
 }

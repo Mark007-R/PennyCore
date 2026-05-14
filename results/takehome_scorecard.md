@@ -14,6 +14,7 @@ provider switch).
 | Date | Day | Scenarios passed | Effective pass rate | Notes |
 |------|-----|------------------|---------------------|-------|
 | 2026-05-10 | 7 | 5/6 (1, 2, 3, 4, 5) | **5/5 non-LLM** | scenario 6 fails: `openai` SDK absent in takehome venv. Adapter exit code 0 (passed >= total - 1). |
+| 2026-05-14 | 11 | 5/6 (1, 2, 3, 4, 5) | **5/5 non-LLM** | Phase 2 wrap re-run. Unchanged from Day 7 — adapter behavior is identical; Phase 5 (Day 25+) lifts the score by adding LLM-summarized retrieval. |
 
 ### Day 7 — 2026-05-10 — first run
 
@@ -72,6 +73,7 @@ Phase 5 work (semantic retrieval, LLM-summarized strategy, hybrid champion) is w
 | Date | Day | Scenarios passed | Effective pass rate | Notes |
 |------|-----|------------------|---------------------|-------|
 | 2026-05-13 | 10 | 6/6 (1, 2, 3, 4, 5, 6) | **6/6** | All scenarios pass; planner runs in mock-fallback mode because `openai` SDK isn't installed in the takehome venv — adapter behavior is provider-independent so scoring is unaffected. |
+| 2026-05-14 | 11 | 6/6 (1, 2, 3, 4, 5, 6) | **6/6** | Phase 2 wrap re-run via `bash scripts/run_takehome_evals.sh` (script patched Day 11 to pass the adapter target on argv). Unchanged from Day 10 — both takehome scores are LOCKED at the Phase 2 baseline. |
 
 ### Day 10 — 2026-05-13 — first run
 
@@ -127,3 +129,17 @@ Loaded: PennyCoreOrchestrator
 **Estimated bonus:** B1 +1 (DESIGN.md exists), B5 +1 (structured LLM output via JSON-prompt + Pydantic validation). Total ~46.
 
 The self-score is optimistic — the rubric is graded by a human reviewer who may rate D8 / D11 / D14 lower depending on rubric strictness; honest range is **38–44 core**. Phase 3 (the four-engine comparison) is what locks in D8 = 2 with empirical evidence.
+
+## Phase 2 wrap-up (locked 2026-05-14, Day 11)
+
+Both takehome scores are at the canonical Phase-2 baseline. They DO NOT
+move during Phase 3 unless a change in our adapters slips a regression
+(unlikely — the adapters are 3-method and 5-method protocols
+respectively, and their integration tests are part of the green suite).
+
+| Component | Day 11 score | Lift expected | When |
+|-----------|--------------|---------------|------|
+| context-engine | 5/5 non-LLM (5/6 raw) | 5/5 non-LLM → 6/6 raw + ~+8 rubric points | Day 25-28 (Phase 5 LLM-summarized retrieval + semantic) |
+| orchestrator | 6/6 | unchanged scenarios; +1 rubric on D8 (policy expressiveness) | Day 18 (Phase 3 four-engine comparison locks D8 = 2/2) |
+
+The scenarios passing is a binary; the rubric estimate (29-32 for context-engine, 38-44 for orchestrator) is what moves with future work.
