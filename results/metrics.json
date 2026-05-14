@@ -448,6 +448,70 @@
         "carries_to_phase_3": "Champion = (declarative policy + recency-only retrieval). Phase 3 Days 12-15 build the context-engine benchmark dataset (200 history+query pairs) and implement strategies 1-5 (Naive/Recency/Semantic/Summarized/Hybrid); Days 16-18 the orchestrator policy-engine comparison (Naive-LLM/YAML/Python-rules/LLM-judge). All four orchestrator engines drop into the existing PolicyEngine Protocol without touching the pipeline."
       },
       "notes": "Phase 2 wraps clean. The Day-11 deliverable is a single in-process E2E test module (3 tests) + a one-line fix to the takehome runner + the canonical scorecard re-run. NO new production code today by design — the phase wrap day is for locking in numbers, not introducing risk. Full suite 326/326 green (up from 323 Day-10) confirms no regressions. Live docker-compose verification adds a redundant signal that the in-process test isn't lying about what production does."
+    },
+    {
+      "day": 11,
+      "phase": 2,
+      "date": "2026-05-14",
+      "component": "system",
+      "feature": "phase2_latency_backfill_plus_api_docs",
+      "feature_shipped": true,
+      "is_backfill": true,
+      "backfill_reason": "PRIMARY METRICS section of the SKILL mandates decision-latency (p50/p95/p99) for the orchestrator and end-to-end latency (p50/p95/p99) for the system. Neither was captured on the natural-fit days (Day 9 planner / Day 10 pipeline / Day 11 phase wrap). User-directed backfill on top of the Phase 2 wrap; opened as a separate experiment/phase2-backfill PR rather than amending the closed Phase-2 PR.",
+      "modules_added": [
+        "benchmarks/phase2_latency_backfill.py",
+        "docs/API.md"
+      ],
+      "results_added": [
+        "results/phase2_latency_backfill.json"
+      ],
+      "decision_pipeline_latency_ms": {
+        "what": "DecisionPipeline.handle_proposal() — synthetic proposal through policy(auto) -> action-store put -> mock executor -> audit writes",
+        "samples": 500,
+        "warmup_excluded": 50,
+        "policy_path": "auto (longest path: PROPOSAL + DECISION + EXECUTION audit rows)",
+        "llm_mode": "n/a (pipeline is below the planner; no LLM call on this path)",
+        "min": 0.0427,
+        "p50": 0.0611,
+        "p95": 0.1108,
+        "p99": 0.2691,
+        "max": 0.6666,
+        "mean": 0.0688,
+        "stdev": 0.0441,
+        "interpretation": "Sub-millisecond at p99 — pure-Python dict mutations + in-memory audit appends. The 'max' tail (0.67 ms) is the worst single-sample outlier; p99 is what production SLOs should target."
+      },
+      "end_to_end_latency_ms": {
+        "what": "POST /events (context-engine) -> InMemoryEventBus -> orchestrator listener -> chain_handlers (buffer + planner + pipeline) -> audit writes. All in-process so the HTTP response time IS the end-to-end latency.",
+        "samples": 500,
+        "warmup_excluded": 50,
+        "transport": "InMemoryEventBus (synchronous subscriber)",
+        "policy_path": "auto (every event auto-executes — longest pipeline path)",
+        "llm_mode": "mock (rule-table fallback proposals)",
+        "min": 1.5314,
+        "p50": 1.7839,
+        "p95": 2.1895,
+        "p99": 2.4863,
+        "max": 20.4337,
+        "mean": 1.8742,
+        "stdev": 0.8671,
+        "sanity_check": {
+          "orchestrator_actions_in_pipeline_store": 550,
+          "expected_actions": 550,
+          "match": true,
+          "note": "actions_in_pipeline matches SAMPLES (500) + WARMUP (50); confirms every POST /events produced exactly one action through the full pipeline"
+        },
+        "production_caveat": "in-process bus is a LOWER BOUND on production E2E. Production Redis Pub/Sub adds wire latency + worker scheduling; AND the POST response returns before the orchestrator processes the event (fire-and-forget publish). Real production E2E lands via OTel spans in Phase 6 Day 30."
+      },
+      "api_docs": {
+        "what": "docs/API.md — first comprehensive API reference for both services. Captures every endpoint stable through Day 11 (context-engine: /, /healthz, /readyz, POST /events; orchestrator: /, /healthz, /readyz, /events/recent, /proposals/recent, /approvals, POST /approvals/{id}/approve, POST /approvals/{id}/reject, /actions/{id}) plus the action-type enum, policy-decision enum, audit-kind taxonomy, and the Phase 2 latency budget table.",
+        "rationale": "Listed in the SKILL project folder structure but no specific day in the Day-by-Day table created it. Backfilling now lets the Phase 3 surface (which adds /benchmarks/* and /policy_engines/*) extend a documented baseline rather than build a doc from scratch."
+      },
+      "tests_passing": 326,
+      "tests_added_today": 0,
+      "tests_added_reason": "backfill adds a benchmark + docs; no new behavior, so no new unit/integration tests. Existing 326-test suite is the regression oracle.",
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset for PG-integration tests; gating unchanged from prior days",
+      "notes": "Backfill PR. The day-by-day SKILL workflow says one PR per phase (Phase 2 closed Day 11 morning); this is a separate experiment/phase2-backfill PR per user override after the Phase-2 audit surfaced the two missing latency measurements + the missing API.md. Branched off main, not off phase/2-mvp-build (which is gone). Future days that need to cite Phase-2 latency numbers should reference this entry, not the Day-11 wrap entry above."
     }
   ]
 }
