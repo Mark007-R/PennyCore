@@ -634,9 +634,9 @@
         "smoke_command": "python -m benchmarks.context_engine_bench --smoke",
         "full_command": "python -m benchmarks.context_engine_bench"
       },
-      "tests_passing": 356,
+      "tests_passing": 341,
       "tests_added_today": 15,
-      "tests_added_reason": "test_phase3_dataset.py \u2014 manifest invariants, loader contracts, harness boot path, recency-on-5-pairs smoke",
+      "tests_added_reason": "test_phase3_dataset.py \u2014 manifest invariants, loader contracts, harness boot path, recency-on-5-pairs smoke. Pre-Day-12 baseline was 326 (Day-11 metrics); 326 + 15 = 341.",
       "tests_skipped": 10,
       "tests_skipped_reason": "DATABASE_URL unset for PG-integration tests; gating unchanged from prior days",
       "notes": "Phase 3 PR opens today (phase/3-comparison-studies). Day 13 wires Strategy 1 (naive dump-everything) + Strategy 2 (recency-only is already wired as the harness baseline; Day 13 promotes it from baseline to first-class strategy in the comparison table). Day 14 adds semantic + summarized; Day 15 adds hybrid + LLM-as-judge quality scoring across all 5. Dataset is reproducible: re-run benchmarks/data/build_dataset.py --seed 42 to regenerate."
