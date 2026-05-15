@@ -350,7 +350,7 @@
           "test_jane_mortgage_idempotent_redelivery_no_double_action",
           "test_jane_mortgage_multi_tenant_isolation_acme_vs_beta"
         ],
-        "test_runtime_sec": 1.20,
+        "test_runtime_sec": 1.2,
         "policy_table_acme_bank": {
           "send_borrower_message": "approval_required",
           "notify_loan_officer": "auto",
@@ -359,7 +359,9 @@
           "update_status": "auto",
           "no_op": "auto"
         },
-        "policy_table_beta_bank": {"*": "auto"},
+        "policy_table_beta_bank": {
+          "*": "auto"
+        },
         "happy_path_assertions": [
           "5 events landed on /events/recent for tenant acme-bank",
           "5 proposals landed on /proposals/recent for tenant acme-bank",
@@ -384,7 +386,10 @@
         },
         "readyz_orchestrator": {
           "status": "ready",
-          "probed": {"postgres": "ok", "redis": "ok"}
+          "probed": {
+            "postgres": "ok",
+            "redis": "ok"
+          }
         },
         "live_counts_acme": {
           "events_received": 5,
@@ -400,13 +405,19 @@
         "isolation_verified": "acme customer_id (cust_4a3c7166...) disjoint from beta-bank customer_id (cust_92eee230...); action_id sets disjoint per-tenant",
         "idempotency_verified": "second POST with idempotency_key=live-jane-001 returned created=false deduped=true; orchestrator received 5 events not 6",
         "approve_path_verified": "POST /approvals/{id}/approve transitioned status to 'executed' and audit_trail captured [proposal, decision, approval, execution]",
-        "note": "live stack runs MOCK_LLM=true so planner emits rule-table-fallback proposals; the in-process E2E test exercises the same code paths against the same fallback path, so live-vs-test parity is intact. Live default-policy for acme is APPROVAL_REQUIRED (no docker-compose policy seeding shipped this phase — Phase 4 hardening adds a startup hook to load tenant policies from the policies table)"
+        "note": "live stack runs MOCK_LLM=true so planner emits rule-table-fallback proposals; the in-process E2E test exercises the same code paths against the same fallback path, so live-vs-test parity is intact. Live default-policy for acme is APPROVAL_REQUIRED (no docker-compose policy seeding shipped this phase \u2014 Phase 4 hardening adds a startup hook to load tenant policies from the policies table)"
       },
       "takehome_score": {
         "context_engine": {
           "scenarios_passed": 5,
           "scenarios_total": 6,
-          "scenarios_passed_ids": [1, 2, 3, 4, 5],
+          "scenarios_passed_ids": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
           "scenario_6_status": "fail_no_openai_module",
           "evaluator_exit_code": 0,
           "effective_pass_rate": "5/5 non-LLM (unchanged from Day 7)"
@@ -414,7 +425,14 @@
         "orchestrator": {
           "scenarios_passed": 6,
           "scenarios_total": 6,
-          "scenarios_passed_ids": [1, 2, 3, 4, 5, 6],
+          "scenarios_passed_ids": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
           "evaluator_exit_code": 0,
           "effective_pass_rate": "6/6 (unchanged from Day 10)"
         },
@@ -428,9 +446,9 @@
           "tests_full_suite_runtime_sec": 1.93,
           "takehome_context_engine": "5/6 (5/5 non-LLM)",
           "takehome_orchestrator": "6/6",
-          "docker_compose_boot": "verified — all 4 containers healthy",
-          "e2e_round_trip_in_process": "verified — 3 tests green",
-          "e2e_round_trip_live_docker": "verified — Jane scenario end-to-end through Redis + Postgres"
+          "docker_compose_boot": "verified \u2014 all 4 containers healthy",
+          "e2e_round_trip_in_process": "verified \u2014 3 tests green",
+          "e2e_round_trip_live_docker": "verified \u2014 Jane scenario end-to-end through Redis + Postgres"
         },
         "champion_strategies_locked": {
           "ingestion": "FastAPI POST /events with X-Idempotency-Key header + (tenant_id, idempotency_key) UNIQUE oracle",
@@ -447,7 +465,7 @@
         },
         "carries_to_phase_3": "Champion = (declarative policy + recency-only retrieval). Phase 3 Days 12-15 build the context-engine benchmark dataset (200 history+query pairs) and implement strategies 1-5 (Naive/Recency/Semantic/Summarized/Hybrid); Days 16-18 the orchestrator policy-engine comparison (Naive-LLM/YAML/Python-rules/LLM-judge). All four orchestrator engines drop into the existing PolicyEngine Protocol without touching the pipeline."
       },
-      "notes": "Phase 2 wraps clean. The Day-11 deliverable is a single in-process E2E test module (3 tests) + a one-line fix to the takehome runner + the canonical scorecard re-run. NO new production code today by design — the phase wrap day is for locking in numbers, not introducing risk. Full suite 326/326 green (up from 323 Day-10) confirms no regressions. Live docker-compose verification adds a redundant signal that the in-process test isn't lying about what production does."
+      "notes": "Phase 2 wraps clean. The Day-11 deliverable is a single in-process E2E test module (3 tests) + a one-line fix to the takehome runner + the canonical scorecard re-run. NO new production code today by design \u2014 the phase wrap day is for locking in numbers, not introducing risk. Full suite 326/326 green (up from 323 Day-10) confirms no regressions. Live docker-compose verification adds a redundant signal that the in-process test isn't lying about what production does."
     },
     {
       "day": 11,
@@ -466,7 +484,7 @@
         "results/phase2_latency_backfill.json"
       ],
       "decision_pipeline_latency_ms": {
-        "what": "DecisionPipeline.handle_proposal() — synthetic proposal through policy(auto) -> action-store put -> mock executor -> audit writes",
+        "what": "DecisionPipeline.handle_proposal() \u2014 synthetic proposal through policy(auto) -> action-store put -> mock executor -> audit writes",
         "samples": 500,
         "warmup_excluded": 50,
         "policy_path": "auto (longest path: PROPOSAL + DECISION + EXECUTION audit rows)",
@@ -478,14 +496,14 @@
         "max": 0.6666,
         "mean": 0.0688,
         "stdev": 0.0441,
-        "interpretation": "Sub-millisecond at p99 — pure-Python dict mutations + in-memory audit appends. The 'max' tail (0.67 ms) is the worst single-sample outlier; p99 is what production SLOs should target."
+        "interpretation": "Sub-millisecond at p99 \u2014 pure-Python dict mutations + in-memory audit appends. The 'max' tail (0.67 ms) is the worst single-sample outlier; p99 is what production SLOs should target."
       },
       "end_to_end_latency_ms": {
         "what": "POST /events (context-engine) -> InMemoryEventBus -> orchestrator listener -> chain_handlers (buffer + planner + pipeline) -> audit writes. All in-process so the HTTP response time IS the end-to-end latency.",
         "samples": 500,
         "warmup_excluded": 50,
         "transport": "InMemoryEventBus (synchronous subscriber)",
-        "policy_path": "auto (every event auto-executes — longest pipeline path)",
+        "policy_path": "auto (every event auto-executes \u2014 longest pipeline path)",
         "llm_mode": "mock (rule-table fallback proposals)",
         "min": 1.5314,
         "p50": 1.7839,
@@ -503,7 +521,7 @@
         "production_caveat": "in-process bus is a LOWER BOUND on production E2E. Production Redis Pub/Sub adds wire latency + worker scheduling; AND the POST response returns before the orchestrator processes the event (fire-and-forget publish). Real production E2E lands via OTel spans in Phase 6 Day 30."
       },
       "api_docs": {
-        "what": "docs/API.md — first comprehensive API reference for both services. Captures every endpoint stable through Day 11 (context-engine: /, /healthz, /readyz, POST /events; orchestrator: /, /healthz, /readyz, /events/recent, /proposals/recent, /approvals, POST /approvals/{id}/approve, POST /approvals/{id}/reject, /actions/{id}) plus the action-type enum, policy-decision enum, audit-kind taxonomy, and the Phase 2 latency budget table.",
+        "what": "docs/API.md \u2014 first comprehensive API reference for both services. Captures every endpoint stable through Day 11 (context-engine: /, /healthz, /readyz, POST /events; orchestrator: /, /healthz, /readyz, /events/recent, /proposals/recent, /approvals, POST /approvals/{id}/approve, POST /approvals/{id}/reject, /actions/{id}) plus the action-type enum, policy-decision enum, audit-kind taxonomy, and the Phase 2 latency budget table.",
         "rationale": "Listed in the SKILL project folder structure but no specific day in the Day-by-Day table created it. Backfilling now lets the Phase 3 surface (which adds /benchmarks/* and /policy_engines/*) extend a documented baseline rather than build a doc from scratch."
       },
       "tests_passing": 326,
@@ -512,6 +530,116 @@
       "tests_skipped": 10,
       "tests_skipped_reason": "DATABASE_URL unset for PG-integration tests; gating unchanged from prior days",
       "notes": "Backfill PR. The day-by-day SKILL workflow says one PR per phase (Phase 2 closed Day 11 morning); this is a separate experiment/phase2-backfill PR per user override after the Phase-2 audit surfaced the two missing latency measurements + the missing API.md. Branched off main, not off phase/2-mvp-build (which is gone). Future days that need to cite Phase-2 latency numbers should reference this entry, not the Day-11 wrap entry above."
+    },
+    {
+      "day": 12,
+      "phase": 3,
+      "date": "2026-05-15",
+      "component": "context_engine",
+      "feature": "phase3_benchmark_dataset_plus_harness_skeleton_plus_recency_baseline",
+      "feature_shipped": true,
+      "is_backfill": false,
+      "modules_added": [
+        "benchmarks/data/build_dataset.py",
+        "benchmarks/data/customer_histories.jsonl",
+        "benchmarks/data/queries.jsonl",
+        "benchmarks/data/manifest.json",
+        "benchmarks/data/README.md",
+        "benchmarks/dataset_loader.py",
+        "benchmarks/context_engine_bench.py",
+        "tests/unit/test_phase3_dataset.py"
+      ],
+      "results_added": [
+        "results/phase3_context_engine_smoke.json",
+        "results/phase3_context_engine_results.json"
+      ],
+      "dataset": {
+        "n_pairs": 200,
+        "n_histories": 200,
+        "source_counts": {
+          "banking_template": 50,
+          "multiwoz": 150
+        },
+        "bucket_counts": {
+          "short": 100,
+          "medium": 60,
+          "long": 30,
+          "very_long": 10
+        },
+        "tenants": [
+          "tenant_acme_bank",
+          "tenant_globetrek_concierge",
+          "tenant_jefferson_credit"
+        ],
+        "seed": 42,
+        "artifact_sha256": "b317ae517da2395944c4bc1b19d2d7c759709dc20a6ed30ce742fedc6a44efab"
+      },
+      "recency_baseline_full_run": {
+        "n_pairs": 200,
+        "token_budget": 8000,
+        "overall_p50_ms": 0.2395,
+        "overall_p95_ms": 1.0619,
+        "overall_avg_brief_tokens": 1421.7,
+        "by_bucket": {
+          "short": {
+            "n_pairs": 100,
+            "avg_history_messages": 17.4,
+            "avg_brief_tokens": 474.3,
+            "retrieval_latency_ms_p50": 0.1365,
+            "retrieval_latency_ms_p95": 0.2341,
+            "retrieval_latency_ms_p99": 0.2449,
+            "budget_saturation_pct": 5.9
+          },
+          "medium": {
+            "n_pairs": 60,
+            "avg_history_messages": 38.6,
+            "avg_brief_tokens": 1126.9,
+            "retrieval_latency_ms_p50": 0.2934,
+            "retrieval_latency_ms_p95": 0.3542,
+            "retrieval_latency_ms_p99": 0.3927,
+            "budget_saturation_pct": 14.1
+          },
+          "long": {
+            "n_pairs": 30,
+            "avg_history_messages": 109.1,
+            "avg_brief_tokens": 3014.2,
+            "retrieval_latency_ms_p50": 0.8321,
+            "retrieval_latency_ms_p95": 0.9893,
+            "retrieval_latency_ms_p99": 1.0416,
+            "budget_saturation_pct": 37.7
+          },
+          "very_long": {
+            "n_pairs": 10,
+            "avg_history_messages": 307.0,
+            "avg_brief_tokens": 7886.8,
+            "retrieval_latency_ms_p50": 2.3393,
+            "retrieval_latency_ms_p95": 2.5778,
+            "retrieval_latency_ms_p99": 2.5778,
+            "budget_saturation_pct": 98.6
+          }
+        },
+        "headline": "Recency baseline saturates the 8K budget at 99% on very_long histories (avg 7886 / 8000 tokens). That's the slice where smarter strategies (semantic, summarized, hybrid) need to win on quality/cost \u2014 the room to beat the baseline lives at the long tail."
+      },
+      "harness": {
+        "registered_strategies_today": [
+          "recency"
+        ],
+        "strategies_to_add": [
+          "naive_dump",
+          "semantic",
+          "summarized",
+          "hybrid"
+        ],
+        "default_token_budget": 8000,
+        "smoke_command": "python -m benchmarks.context_engine_bench --smoke",
+        "full_command": "python -m benchmarks.context_engine_bench"
+      },
+      "tests_passing": 356,
+      "tests_added_today": 15,
+      "tests_added_reason": "test_phase3_dataset.py \u2014 manifest invariants, loader contracts, harness boot path, recency-on-5-pairs smoke",
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset for PG-integration tests; gating unchanged from prior days",
+      "notes": "Phase 3 PR opens today (phase/3-comparison-studies). Day 13 wires Strategy 1 (naive dump-everything) + Strategy 2 (recency-only is already wired as the harness baseline; Day 13 promotes it from baseline to first-class strategy in the comparison table). Day 14 adds semantic + summarized; Day 15 adds hybrid + LLM-as-judge quality scoring across all 5. Dataset is reproducible: re-run benchmarks/data/build_dataset.py --seed 42 to regenerate."
     }
   ]
 }

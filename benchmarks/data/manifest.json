@@ -1,0 +1,38 @@
+{
+  "artifact_sha256": "b317ae517da2395944c4bc1b19d2d7c759709dc20a6ed30ce742fedc6a44efab",
+  "bucket_counts": {
+    "long": 30,
+    "medium": 60,
+    "short": 100,
+    "very_long": 10
+  },
+  "build_timestamp_utc": "2026-05-15T05:22:04.783583+00:00",
+  "n_histories": 200,
+  "n_pairs": 200,
+  "schema_version": 1,
+  "seed": 42,
+  "source_counts": {
+    "banking_template": 50,
+    "multiwoz": 150
+  },
+  "sources": {
+    "banking_template": {
+      "count": 50,
+      "license": "PennyCore-internal synthetic \u2014 clearly-fake names",
+      "templates": 10,
+      "variants_per_template": 5
+    },
+    "multiwoz": {
+      "count": 150,
+      "dataset": "multi_woz_v22",
+      "license": "MultiWOZ 2.2 / Apache-style \u2014 see HuggingFace dataset card",
+      "split": "train",
+      "version_pin": "trust_remote_code=True; deterministic via sorted dialogue_id"
+    }
+  },
+  "tenants": [
+    "tenant_acme_bank",
+    "tenant_globetrek_concierge",
+    "tenant_jefferson_credit"
+  ]
+}
