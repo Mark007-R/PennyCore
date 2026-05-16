@@ -640,6 +640,148 @@
       "tests_skipped": 10,
       "tests_skipped_reason": "DATABASE_URL unset for PG-integration tests; gating unchanged from prior days",
       "notes": "Phase 3 PR opens today (phase/3-comparison-studies). Day 13 wires Strategy 1 (naive dump-everything) + Strategy 2 (recency-only is already wired as the harness baseline; Day 13 promotes it from baseline to first-class strategy in the comparison table). Day 14 adds semantic + summarized; Day 15 adds hybrid + LLM-as-judge quality scoring across all 5. Dataset is reproducible: re-run benchmarks/data/build_dataset.py --seed 42 to regenerate."
+    },
+    {
+      "day": 13,
+      "phase": 3,
+      "date": "2026-05-16",
+      "component": "context_engine",
+      "feature": "phase3_strategy_1_naive_dump_plus_strategy_2_recency_promoted",
+      "feature_shipped": true,
+      "is_backfill": false,
+      "modules_added": [
+        "benchmarks/registry.py",
+        "benchmarks/strategies/__init__.py",
+        "benchmarks/strategies/naive.py",
+        "benchmarks/strategies/recency.py",
+        "tests/unit/test_naive_strategy.py",
+        "results/EXPERIMENT_LOG.md"
+      ],
+      "modules_modified": [
+        "benchmarks/context_engine_bench.py \u2014 registry split out; per-strategy budget override; per-bucket summary"
+      ],
+      "tests_passing": 356,
+      "tests_added_today": 15,
+      "tests_added_reason": "naive_segments contract (8) + harness budget override (5) + real-dataset integration (2)",
+      "tests_skipped": 10,
+      "tests_skipped_reason": "Postgres integration gated on DATABASE_URL",
+      "comparison_run": {
+        "n_pairs": 200,
+        "strategies": [
+          "naive_dump",
+          "recency"
+        ],
+        "naive_dump": {
+          "effective_token_budget": 50000,
+          "overall_avg_brief_tokens": 1449.6,
+          "overall_budget_saturation_pct": 2.9,
+          "overall_p50_ms": 0.2368,
+          "overall_p95_ms": 0.9364,
+          "by_bucket": {
+            "short": {
+              "n_pairs": 100,
+              "avg_brief_tokens": 474.3,
+              "budget_saturation_pct": 0.9,
+              "p50_ms": 0.1353,
+              "p95_ms": 0.2274
+            },
+            "medium": {
+              "n_pairs": 60,
+              "avg_brief_tokens": 1126.9,
+              "budget_saturation_pct": 2.3,
+              "p50_ms": 0.2893,
+              "p95_ms": 0.3675
+            },
+            "long": {
+              "n_pairs": 30,
+              "avg_brief_tokens": 3014.2,
+              "budget_saturation_pct": 6.0,
+              "p50_ms": 0.8074,
+              "p95_ms": 0.9056
+            },
+            "very_long": {
+              "n_pairs": 10,
+              "avg_brief_tokens": 8445.0,
+              "budget_saturation_pct": 16.9,
+              "p50_ms": 2.3713,
+              "p95_ms": 2.488
+            }
+          }
+        },
+        "recency": {
+          "effective_token_budget": 8000,
+          "overall_avg_brief_tokens": 1421.7,
+          "overall_budget_saturation_pct": 17.8,
+          "overall_p50_ms": 0.2333,
+          "overall_p95_ms": 0.9285,
+          "by_bucket": {
+            "short": {
+              "n_pairs": 100,
+              "avg_brief_tokens": 474.3,
+              "budget_saturation_pct": 5.9,
+              "p50_ms": 0.136,
+              "p95_ms": 0.228
+            },
+            "medium": {
+              "n_pairs": 60,
+              "avg_brief_tokens": 1126.9,
+              "budget_saturation_pct": 14.1,
+              "p50_ms": 0.2876,
+              "p95_ms": 0.348
+            },
+            "long": {
+              "n_pairs": 30,
+              "avg_brief_tokens": 3014.2,
+              "budget_saturation_pct": 37.7,
+              "p50_ms": 0.8106,
+              "p95_ms": 0.8801
+            },
+            "very_long": {
+              "n_pairs": 10,
+              "avg_brief_tokens": 7886.8,
+              "budget_saturation_pct": 98.6,
+              "p50_ms": 2.3339,
+              "p95_ms": 2.4618
+            }
+          }
+        },
+        "per_pair_delta_tokens_naive_minus_recency": {
+          "short": {
+            "mean": 0.0,
+            "pairs_with_drop": 0,
+            "n": 100,
+            "max": 0
+          },
+          "medium": {
+            "mean": 0.0,
+            "pairs_with_drop": 0,
+            "n": 60,
+            "max": 0
+          },
+          "long": {
+            "mean": 0.0,
+            "pairs_with_drop": 0,
+            "n": 30,
+            "max": 0
+          },
+          "very_long": {
+            "mean": 558.2,
+            "pairs_with_drop": 9,
+            "n": 10,
+            "max": 1035
+          }
+        },
+        "cost_at_sonnet_4_6_3usd_per_mtok": {
+          "naive_per_100q_usd": 0.43489,
+          "recency_per_100q_usd": 0.42652,
+          "delta_per_100q_usd": 0.00837,
+          "note": "Only 2% naive cost premium on this dataset because 95% of histories fit under both budgets; the gap concentrates entirely in the very_long bucket"
+        }
+      },
+      "results_added": [
+        "results/phase3_context_engine_results.json (overwritten \u2014 now contains both strategies' 200 pairs each = 400 result rows)"
+      ],
+      "notes": "Day 13 punch line: naive vs recency are token-equal on short/medium/long because both fit under 8K; the only place they diverge is the very_long bucket, where recency saturates 98.6% of its budget and drops ~558 tokens per pair on average. That is the headroom Day 14 semantic + summarized strategies will fight to claim. Counterintuitive: the headline cost contrast is 2%, not 6x, because the dataset distribution matches real customer-service traffic (most histories are short)."
     }
   ]
 }

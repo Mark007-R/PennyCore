@@ -11,7 +11,7 @@
       "history_message_count": 10,
       "notes": "",
       "pair_id": "pair_000",
-      "retrieval_latency_ms": 0.2287,
+      "retrieval_latency_ms": 0.2976,
       "segment_source_counts": {
         "prior_action": 1,
         "recent_message": 10
@@ -26,7 +26,7 @@
       "history_message_count": 10,
       "notes": "",
       "pair_id": "pair_001",
-      "retrieval_latency_ms": 0.1197,
+      "retrieval_latency_ms": 0.1752,
       "segment_source_counts": {
         "prior_action": 3,
         "recent_message": 10
@@ -41,7 +41,7 @@
       "history_message_count": 10,
       "notes": "",
       "pair_id": "pair_002",
-      "retrieval_latency_ms": 0.0911,
+      "retrieval_latency_ms": 0.133,
       "segment_source_counts": {
         "prior_action": 1,
         "recent_message": 10
@@ -56,7 +56,7 @@
       "history_message_count": 10,
       "notes": "",
       "pair_id": "pair_003",
-      "retrieval_latency_ms": 0.0895,
+      "retrieval_latency_ms": 0.1138,
       "segment_source_counts": {
         "recent_message": 10
       },
@@ -70,7 +70,7 @@
       "history_message_count": 10,
       "notes": "",
       "pair_id": "pair_004",
-      "retrieval_latency_ms": 0.0867,
+      "retrieval_latency_ms": 0.1257,
       "segment_source_counts": {
         "prior_action": 1,
         "recent_message": 10
@@ -82,10 +82,21 @@
   "summary": {
     "recency": {
       "avg_brief_tokens": 237.6,
+      "budget_saturation_pct": 3.0,
+      "by_bucket": {
+        "short": {
+          "avg_brief_tokens": 237.6,
+          "budget_saturation_pct": 3.0,
+          "n_pairs": 5,
+          "retrieval_latency_ms_p50": 0.133,
+          "retrieval_latency_ms_p95": 0.1752
+        }
+      },
+      "effective_token_budget": 8000,
       "n_pairs": 5,
       "retrieval_latency_ms": {
-        "p50": 0.0911,
-        "p95": 0.1197
+        "p50": 0.133,
+        "p95": 0.1752
       }
     }
   },
