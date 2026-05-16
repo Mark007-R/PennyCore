@@ -42,15 +42,18 @@ Schema for each entry:
     recency's 8K budget; max single-pair drop was 1,035 tokens.
   - Recency very_long saturation: **98.6%** — cliff edge. Naive
     very_long saturation: 16.9% — comfortable headroom.
-  - Cost at sonnet-4-6 input rate ($3/M-tok): naive **$0.43489 / 100q**,
-    recency **$0.42652 / 100q** → **2% naive premium** on this dataset,
-    not the 6× the SKILL narrative suggests for a worst-case framing.
-- **Verdict so far:** Recency holds on cost AND quality across 95% of
-  the cohort (no content dropped); the only battleground is the
-  very_long slice where recency is one big history away from
+  - Total input tokens for 200 pairs: naive **289,926**, recency
+    **284,344** → token ratio 1.0196 → naive's input-cost premium
+    is **2% above recency at any per-token input price** (cost is
+    linear in tokens). No specific per-token dollar rate is asserted
+    here; the dollar-per-100q figure depends on the published input
+    rate of the model used in production and is pinned alongside the
+    Day-15 LLM-as-judge run. The 6× framing the SKILL narrative
+    hints at would require a strategy that shrinks below recency's
+    1.4K-token average — likely Day-15 hybrid, not Day-13 naive.
+- **Verdict so far:** Recency holds on tokens AND content-fit across
+  95% of the cohort (no content dropped); the only battleground is
+  the very_long slice where recency is one big history away from
   truncation. Day 14's semantic + summarized strategies should fight
   for that 558-token-per-pair headroom — replacing dropped recency
   segments with semantically relevant or summarized older content.
-  The 6× cost story the SKILL hints at will only show up if a
-  strategy can shrink the brief substantially below recency's 1.4K
-  average (likely hybrid on Day 15).
