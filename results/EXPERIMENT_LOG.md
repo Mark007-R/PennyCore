@@ -56,9 +56,11 @@ Schema for each entry:
     **242,135 tokens saved**. Compression ratio recency → summarized:
     **6.7×** on aggregate, **42×** on very_long.
   - **Semantic latency premium:** 3.4× recency at p50 (0.80 vs
-    0.24 ms); 2.5× at p95 (3.54 vs 1.40 ms). FNV hash + cosine per
-    segment is cheap (~3 µs each) but ~280 segments × 4 µs = ~1 ms
-    on a very_long history.
+    0.24 ms); 2.5× at p95 (3.54 vs 1.40 ms). On very_long histories
+    (302-314 messages per pair) semantic p50 is 7.83 ms vs recency's
+    2.35 ms — a 5.48 ms delta, which works out to ~18 µs per extra
+    message processed (delta ÷ message count, not an isolated
+    microbench).
 - **Verdict so far:** Three findings, in priority order:
   1. **Semantic earns its keep only when the budget saturates.**
      On 95% of pairs, semantic and recency emit the *same brief* —
