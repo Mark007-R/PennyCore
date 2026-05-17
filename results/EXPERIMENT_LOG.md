@@ -21,6 +21,65 @@ Schema for each entry:
 
 ---
 
+## Day 14 — 2026-05-17 — Semantic + summarized join the 4-strategy field
+
+- **Strategies run:** `naive_dump`, `recency`, `semantic`, `summarized`
+  (full 4-way comparison; hybrid ships Day 15)
+- **Token budgets:** naive=50K, recency/semantic/summarized=8K
+- **Quality scoring:** no — Day-15 LLM-as-judge step still pending;
+  retrieval-only comparison (tokens, latency, content divergence,
+  compression ratio).
+- **Results artifacts:**
+  - `results/phase3_context_engine_results.json` (overwritten, now
+    800 rows: 200 pairs × 4 strategies, brief text preserved)
+  - `results/phase3_day14_analysis.json` (new — per-pair Jaccard
+    overlap and per-bucket compression breakdown for the
+    semantic/summarized cohort)
+- **Key numbers (200-pair aggregates):**
+
+  | Strategy    | Budget | Avg brief tokens | Sat % | Lat p50 (ms) | Lat p95 (ms) |
+  |-------------|-------:|-----------------:|------:|-------------:|-------------:|
+  | naive_dump  | 50,000 |          1,449.6 |   2.9 |         0.24 |         1.15 |
+  | recency     |  8,000 |          1,421.7 |  17.8 |         0.24 |         1.40 |
+  | semantic    |  8,000 |          1,421.7 |  17.8 |         0.80 |         3.54 |
+  | summarized  |  8,000 |            211.0 |   2.6 |         0.16 |         0.68 |
+
+  - **Semantic vs recency Jaccard (line-level overlap of briefs):**
+    1.000 on short/medium/long (190 pairs — both pack the entire
+    history under 8K, so the ranking signal changes nothing about
+    *what* gets in); **0.922 mean, 0.783 min** on very_long
+    (10 pairs — 9/10 diverge because the budget saturates and the
+    ranking signal finally has work to do).
+  - **Summarized tokens saved vs recency, by bucket:**
+    short **263**, medium **913**, long **2,803**, very_long
+    **7,699** tokens per pair on average. Total across 200 pairs:
+    **242,135 tokens saved**. Compression ratio recency → summarized:
+    **6.7×** on aggregate, **42×** on very_long.
+  - **Semantic latency premium:** 3.4× recency at p50 (0.80 vs
+    0.24 ms); 2.5× at p95 (3.54 vs 1.40 ms). FNV hash + cosine per
+    segment is cheap (~3 µs each) but ~280 segments × 4 µs = ~1 ms
+    on a very_long history.
+- **Verdict so far:** Three findings, in priority order:
+  1. **Semantic earns its keep only when the budget saturates.**
+     On 95% of pairs, semantic and recency emit the *same brief* —
+     the ranking signal is invisible because everything fits. The
+     comparison story is decided on the 10 very_long pairs (Day 15
+     LLM-as-judge will measure which strategy's *selection* on
+     those pairs wins on response quality).
+  2. **Summarized's compression is real but mock-inflated.** A
+     7× token reduction is correct under mock mode where the
+     summary is 200 chars of input echo. A real LLM summary would
+     be denser (more information per token) but also longer —
+     probably 600-1000 tokens, narrowing the ratio to ~2-3×. The
+     PATTERN holds either way: summarized never saturates the
+     budget, never drops content, and stays cheapest in latency.
+  3. **Latency is not the dominant cost on this dataset.** All four
+     strategies finish in <10ms p95 on a single thread. The
+     Day-15 LLM-as-judge step adds 100-2000 ms per pair from the
+     LLM call — retrieval latency is rounding error against that.
+
+---
+
 ## Day 13 — 2026-05-16 — Naive-dump vs recency on 200 pairs
 
 - **Strategies run:** `naive_dump`, `recency`

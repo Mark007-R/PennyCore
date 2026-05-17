@@ -782,6 +782,128 @@
         "results/phase3_context_engine_results.json (overwritten \u2014 now contains both strategies' 200 pairs each = 400 result rows)"
       ],
       "notes": "Day 13 punch line: naive vs recency are token-equal on short/medium/long because both fit under 8K; the only place they diverge is the very_long bucket, where recency saturates 98.6% of its budget and drops ~558 tokens per pair on average. That is the headroom Day 14 semantic + summarized strategies will fight to claim. Counterintuitive: the headline cost contrast is 2%, not 6x, because the dataset distribution matches real customer-service traffic (most histories are short)."
+    },
+    {
+      "day": 14,
+      "phase": 3,
+      "date": "2026-05-17",
+      "component": "context_engine",
+      "feature": "phase3_strategy_3_semantic_plus_strategy_4_summarized",
+      "feature_shipped": true,
+      "is_backfill": false,
+      "modules_added": [
+        "context_engine/retrieval/semantic.py",
+        "context_engine/retrieval/summarized.py",
+        "benchmarks/strategies/semantic.py",
+        "benchmarks/strategies/summarized.py",
+        "tests/unit/test_semantic_strategy.py",
+        "tests/unit/test_summarized_strategy.py",
+        "results/phase3_day14_analysis.json"
+      ],
+      "modules_modified": [
+        "benchmarks/strategies/__init__.py \u2014 register semantic + summarized"
+      ],
+      "tests_passing": 392,
+      "tests_added_today": 36,
+      "tests_added_reason": "semantic strategy (22: tokenizer 3 + FNV 2 + cosine 4 + semantic_segments 9 + harness 2 + real-bench 2) + summarized strategy (14: behavior 9 + harness 2 + real-bench 3)",
+      "tests_skipped": 10,
+      "tests_skipped_reason": "Postgres integration gated on DATABASE_URL",
+      "comparison_run": {
+        "dataset": "benchmarks/data/manifest.json \u2014 200 pairs (100 short / 60 medium / 30 long / 10 very_long)",
+        "llm_mode": "mock (deterministic; LLM-as-judge quality scoring lands Day 15)",
+        "strategies": [
+          "naive_dump",
+          "recency",
+          "semantic",
+          "summarized"
+        ],
+        "token_budgets": {
+          "naive_dump": 50000,
+          "recency": 8000,
+          "semantic": 8000,
+          "summarized": 8000
+        },
+        "aggregate_per_strategy": {
+          "naive_dump": {
+            "avg_brief_tokens": 1449.6,
+            "budget_saturation_pct": 2.9,
+            "latency_p50_ms": 0.236,
+            "latency_p95_ms": 1.147
+          },
+          "recency": {
+            "avg_brief_tokens": 1421.7,
+            "budget_saturation_pct": 17.8,
+            "latency_p50_ms": 0.237,
+            "latency_p95_ms": 1.4
+          },
+          "semantic": {
+            "avg_brief_tokens": 1421.7,
+            "budget_saturation_pct": 17.8,
+            "latency_p50_ms": 0.8,
+            "latency_p95_ms": 3.537
+          },
+          "summarized": {
+            "avg_brief_tokens": 211.0,
+            "budget_saturation_pct": 2.6,
+            "latency_p50_ms": 0.162,
+            "latency_p95_ms": 0.676
+          }
+        },
+        "semantic_vs_recency_jaccard_by_bucket": {
+          "short": {
+            "n_pairs": 100,
+            "mean": 1.0,
+            "min": 1.0,
+            "pairs_diverging": 0
+          },
+          "medium": {
+            "n_pairs": 60,
+            "mean": 1.0,
+            "min": 1.0,
+            "pairs_diverging": 0
+          },
+          "long": {
+            "n_pairs": 30,
+            "mean": 1.0,
+            "min": 1.0,
+            "pairs_diverging": 0
+          },
+          "very_long": {
+            "n_pairs": 10,
+            "mean": 0.9218,
+            "min": 0.7825,
+            "pairs_diverging": 9
+          }
+        },
+        "summarized_tokens_saved_vs_recency_by_bucket": {
+          "short": {
+            "n_pairs": 100,
+            "mean_tokens_saved": 262.9,
+            "total": 26289
+          },
+          "medium": {
+            "n_pairs": 60,
+            "mean_tokens_saved": 912.9,
+            "total": 54772
+          },
+          "long": {
+            "n_pairs": 30,
+            "mean_tokens_saved": 2803.0,
+            "total": 84089
+          },
+          "very_long": {
+            "n_pairs": 10,
+            "mean_tokens_saved": 7698.5,
+            "total": 76985
+          }
+        },
+        "note_on_mock_mode_summary": "Summarized average of 211 tokens is inflated by mock-mode summaries (200-char head + suffix). A real LLM (Day 15 re-judge) is expected to produce 600-1000-token summaries, narrowing the ratio vs recency from 7x to ~2-3x. The pattern (compression > saturation) holds either way."
+      },
+      "results_added": [
+        "results/phase3_context_engine_results.json (overwritten \u2014 now 800 rows: 200 pairs x 4 strategies, full brief text preserved for Day-15 re-judge)",
+        "results/phase3_day14_analysis.json (per-pair Jaccard + tokens-saved breakdown)"
+      ],
+      "notes": "Day 14 punch line #1: semantic and recency are byte-identical on 190/200 pairs (short/medium/long) because everything fits under 8K - the only place the ranking signal matters is the 10 very_long pairs where the budget saturates. Day 14 punch line #2: summarized averages 211 tokens vs recencys 1421 - 7x compression - but the mock-mode 200-char summary inflates that ratio; the Day-15 re-judge with a real LLM will pin the realistic number. Day 14 punch line #3: semantic costs ~3.4x more retrieval latency than recency (0.8 vs 0.24 ms p50) - the embed+cosine per segment is cheap but adds up. All four strategies stay well under the 10ms target end-to-end retrieval budget."
     }
   ]
 }
