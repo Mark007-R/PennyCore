@@ -14,7 +14,9 @@ Ship order:
   ranking on hashed BoW embeddings) and
   :mod:`benchmarks.strategies.summarized` (LLM-summarized cold tail
   + verbatim warm window).
-* Day 15 — hybrid (the champion).
+* Day 15 — :mod:`benchmarks.strategies.hybrid` (recency for warm
+  window + semantic for mid-range + summary for cold tail — the
+  champion against which Day 18 picks the Phase-3 winner).
 
 Recency stays *also* registered directly inside
 ``benchmarks.context_engine_bench`` (it's the Day-12 baseline that
@@ -33,5 +35,6 @@ from benchmarks.strategies import naive  # noqa: F401
 from benchmarks.strategies import recency  # noqa: F401
 from benchmarks.strategies import semantic  # noqa: F401
 from benchmarks.strategies import summarized  # noqa: F401
+from benchmarks.strategies import hybrid  # noqa: F401
 
-__all__ = ["naive", "recency", "semantic", "summarized"]
+__all__ = ["naive", "recency", "semantic", "summarized", "hybrid"]

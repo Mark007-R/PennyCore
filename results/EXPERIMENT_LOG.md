@@ -21,6 +21,88 @@ Schema for each entry:
 
 ---
 
+## Day 15 — 2026-05-18 — Hybrid completes the 5-strategy field + quality column lights up (mock proxy)
+
+- **Strategies run:** `naive_dump`, `recency`, `semantic`, `summarized`,
+  `hybrid` (full 5-way comparison).
+- **Token budgets:** naive=50K; recency / semantic / summarized /
+  hybrid = 8K each.
+- **Quality scoring:** **YES — mock-mode token-recall proxy.**
+  The Day-15 `benchmarks.judge` module ships with two paths
+  sharing one interface; the mock-proxy path is the only one
+  active today (no `ANTHROPIC_API_KEY` in `.env`). Proxy
+  definition: `quality = 0.5*recall(query_tokens in brief) +
+  0.5*recall(gt_tokens in brief)`, mapped to 1-5 via thresholds
+  `(0.20, 0.40, 0.60, 0.80)`. **Bias note:** fact-recall is
+  biased toward verbatim-preserving strategies; compression
+  strategies (summarized, hybrid cold-tail) score lower under
+  this proxy than under a real LLM-as-judge. Day-18 / Phase-5
+  re-run with `LLM_PROVIDER=anthropic` produces the canonical
+  Quality column.
+- **Results artifacts:**
+  - `results/phase3_context_engine_results.json` (overwritten —
+    1000 rows: 200 pairs × 5 strategies; every row now carries
+    `quality_score`, `query_recall`, `ground_truth_recall`,
+    `judge_mode`, `judge_notes` + a top-level `judge_summary`
+    block).
+  - `results/phase3_day15_analysis.json` (new — per-strategy
+    quality aggregates + hybrid vs recency / summarized per-pair
+    beat/match/lose buckets + the proxy bias note).
+- **Key numbers (200-pair aggregates):**
+
+  | Strategy    | Budget | Avg brief tokens | Lat p50 (ms) | Lat p95 (ms) | Mean quality (mock proxy) |
+  |-------------|-------:|-----------------:|-------------:|-------------:|--------------------------:|
+  | naive_dump  | 50,000 |          1,449.6 |         0.24 |         0.87 |                     3.035 |
+  | recency     |  8,000 |          1,421.7 |         0.22 |         1.02 |                     3.035 |
+  | semantic    |  8,000 |          1,421.7 |         0.69 |         4.76 |                     3.035 |
+  | summarized  |  8,000 |            211.0 |         0.12 |         0.43 |                     1.685 |
+  | hybrid      |  8,000 |            838.4 |         0.42 |         1.42 |                     2.910 |
+
+  - **Hybrid vs recency per-pair (quality):** match **183**,
+    beat **0**, lose **17**. Loss bucket: 11 of 30 long pairs +
+    6 of 10 very_long pairs. Tie everywhere else.
+  - **Hybrid vs summarized per-pair (quality):** beat **134**,
+    match **66**, lose **0** — strict dominance under the proxy.
+  - **Naive / recency / semantic quality histograms are
+    bit-identical:** 28 / 41 / 55 / 48 / 28 for scores 1-5.
+    They emit byte-identical briefs on 190/200 pairs, so the
+    proxy ties them. Day-14 already showed this for tokens
+    and content; Day 15 confirms it for the mock-mode quality
+    column.
+  - **Token compression at parity quality (short + medium):**
+    hybrid emits 474 tokens (short) and 1,123 tokens (medium)
+    vs recency's 474 / 1,127 — essentially identical because
+    these histories have no cold tail. On long: hybrid 1,338
+    vs recency 3,014 (56% smaller); on very_long: hybrid 1,274
+    vs recency 7,887 (84% smaller). The "compress only when
+    there's something to compress" pattern is the hybrid
+    feature, not a side effect.
+- **Verdict so far:** Three findings, in priority order:
+  1. **Hybrid is the cost-frontier strategy under mock-mode
+     quality.** Emits 41% smaller briefs than recency on
+     aggregate while matching recency's fact recall on 183 of
+     200 pairs (91.5%). The 17 pairs where it loses are all on
+     long / very_long buckets and the loss is the mock-summary's
+     fault, not the strategy's — a real LLM summary is expected
+     to close that gap (Day 18 re-judge).
+  2. **The mock-mode quality proxy is honest but biased.** It
+     correctly identifies naive / recency / semantic as
+     indistinguishable on this dataset (they emit byte-identical
+     briefs on 190/200 pairs). It correctly punishes mock-mode
+     summarization (which is a 200-char head, not a real
+     summary). It under-states what a real LLM would credit
+     a coherent summary with. All numbers are flagged
+     `judge_mode: "mock_proxy"` in every row.
+  3. **The judge interface is provider-agnostic by design.**
+     Day-18 / Phase-5 swap-in is one config change
+     (`LLM_PROVIDER=anthropic` in `.env`); the same module
+     re-reads the same `phase3_context_engine_results.json`
+     artifact and replaces the `quality_score` column with
+     real-LLM judgments. No re-retrieval needed (brief text is
+     preserved per row).
+
+---
+
 ## Day 14 — 2026-05-17 — Semantic + summarized join the 4-strategy field
 
 - **Strategies run:** `naive_dump`, `recency`, `semantic`, `summarized`
