@@ -164,6 +164,56 @@ Schema for each entry:
 
 ---
 
+## Day 12 — 2026-05-15 — Recency baseline ran on the 200-pair benchmark (back-filled 2026-05-18)
+
+- **Strategies run:** `recency` only (the Day-7 production baseline,
+  promoted into the Phase-3 harness as the row-1 reference number
+  the Day-13/14/15 strategies fight against).
+- **Token budgets:** recency = 8K (production setting, locked Day 7).
+- **Quality scoring:** no — LLM-as-judge module not built until
+  Day 15. Day 12 is the dataset + harness build day; this row is
+  retrieval-only (tokens, latency, budget saturation per bucket).
+- **Results artifacts:**
+  - `results/phase3_context_engine_results.json` (200 rows: 200
+    pairs × 1 strategy; overwritten on Days 13/14/15 as new
+    strategies joined the harness).
+  - `results/phase3_context_engine_smoke.json` (5-pair smoke
+    fingerprint, preserved across days for CI).
+  - `benchmarks/data/{customer_histories,queries}.jsonl` +
+    `manifest.json` (the canonical 200-pair dataset itself —
+    seed=42, sha256-locked).
+- **Key numbers (per-bucket recency baseline):**
+
+  | Bucket    |   n | avg msgs | avg tokens | budget sat | p50 ms | p95 ms |
+  |-----------|----:|---------:|-----------:|-----------:|-------:|-------:|
+  | short     | 100 |    17.4  |     474.3  |    5.9 %   | 0.137  | 0.234  |
+  | medium    |  60 |    38.6  |   1,126.9  |   14.1 %   | 0.293  | 0.354  |
+  | long      |  30 |   109.1  |   3,014.2  |   37.7 %   | 0.832  | 0.989  |
+  | very_long |  10 |   307.0  |   7,886.8  |   98.6 %   | 2.339  | 2.578  |
+
+  Overall: **0.24 ms p50 / 1.06 ms p95 / 1,421.7 avg tokens** per
+  brief.
+- **Verdict so far:** Three observations the rest of Phase 3 builds on:
+  1. **Recency latency scales linearly with history length** (×17.1
+     messages → ×17.1 ms from short to very_long). The Day-13/14/15
+     strategies have a real latency budget to spend on embedding
+     lookups + summarization calls; they don't have to be free,
+     they have to stay under the 50 ms retrieval allowance from
+     the Phase-2 latency budget.
+  2. **Very_long is where Phase 3 gets decided.** Recency already
+     saturates the 8K budget there (98.6%); smarter strategies
+     can't win by packing *more*, they have to win by packing the
+     *right* messages. That's the entire reason semantic + hybrid
+     exist.
+  3. **The 8K budget choice (locked Day 7) holds up.** Short pairs
+     fit comfortably (no waste); very_long pairs are at the cliff
+     edge (every slot competes, so retrieval ranking matters).
+     Day 13 confirms this on the naive vs recency cohort; Day 14
+     reproduces it for semantic; Day 15 stresses it for the hybrid
+     champion.
+
+---
+
 ## Day 13 — 2026-05-16 — Naive-dump vs recency on 200 pairs
 
 - **Strategies run:** `naive_dump`, `recency`
