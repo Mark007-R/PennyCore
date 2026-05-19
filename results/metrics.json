@@ -1023,6 +1023,69 @@
         "results/phase3_day15_analysis.json (per-strategy aggregates + hybrid divergence buckets + proxy bias note)"
       ],
       "notes": "Day 15 punch line #1: hybrid emits 41% smaller briefs than recency on aggregate (838 vs 1422 tokens) at the same 8K budget, while matching recency's mock-mode quality on 183/200 pairs (91.5%). Day 15 punch line #2: under the mock-mode token-recall proxy, naive/recency/semantic produce identical mean quality (3.035) because their briefs are byte-identical on 95% of pairs - the proxy correctly identifies them as indistinguishable. Day 15 punch line #3: the mock-mode quality proxy is biased toward verbatim-preserving strategies. Real LLM-as-judge re-run (Day 18 with LLM_PROVIDER=anthropic) is the canonical Quality column; today's numbers are the proxy floor that compression strategies are expected to improve upon under a real LLM."
+    },
+    {
+      "day": 16,
+      "phase": 3,
+      "date": "2026-05-19",
+      "component": "orchestrator",
+      "feature": "phase3_orchestrator_benchmark_dataset_200_tuples",
+      "feature_shipped": true,
+      "tests_passing": 453,
+      "tests_added_today": 20,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset; PG-integration tests gated",
+      "benchmark_dataset": {
+        "name": "phase3_orchestrator",
+        "n_scenarios": 200,
+        "seed": 42,
+        "tenants": [
+          "tenant_acme_bank",
+          "tenant_globetrek_concierge",
+          "tenant_jefferson_credit"
+        ],
+        "tenant_counts": {
+          "tenant_acme_bank": 67,
+          "tenant_jefferson_credit": 67,
+          "tenant_globetrek_concierge": 66
+        },
+        "event_type_counts": {
+          "message_received": 99,
+          "document_uploaded": 30,
+          "status_changed": 30,
+          "anomaly_detected": 27,
+          "system_event": 14
+        },
+        "decision_counts": {
+          "auto": 127,
+          "approval_required": 68,
+          "reject": 5
+        },
+        "difficulty_counts": {
+          "easy": 92,
+          "medium": 66,
+          "hard": 42
+        },
+        "action_type_counts_in_ground_truth": {
+          "no_op": 35,
+          "notify_loan_officer": 69,
+          "request_document": 12,
+          "schedule_call": 15,
+          "send_borrower_message": 51,
+          "update_status": 18
+        },
+        "ground_truth_columns": [
+          "expected_action_type",
+          "expected_decision"
+        ],
+        "artifacts": [
+          "benchmarks/data/orchestrator/scenarios.jsonl",
+          "benchmarks/data/orchestrator/tenant_policies.json",
+          "benchmarks/data/orchestrator/manifest.json"
+        ],
+        "multi_tenant_divergence": "verified — same action under different tenants yields different decisions (e.g. send_borrower_message=auto under Acme/Globetrek vs approval_required under Jefferson; schedule_call=approval_required under Acme/Globetrek vs reject under Jefferson)"
+      },
+      "notes": "Day-16 ships the orchestrator benchmark dataset only. No engines have been run against it yet — Day 17 implements + scores the four policy-engine variants (naive LLM / declarative / Python rules / LLM-as-judge) against expected_action_type + expected_decision."
     }
   ]
 }

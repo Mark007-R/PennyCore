@@ -1,0 +1,29 @@
+{
+  "tenant_acme_bank": {
+    "default": "approval_required",
+    "no_op": "auto",
+    "notify_loan_officer": "approval_required",
+    "request_document": "approval_required",
+    "schedule_call": "approval_required",
+    "send_borrower_message": "auto",
+    "update_status": "auto"
+  },
+  "tenant_globetrek_concierge": {
+    "default": "approval_required",
+    "no_op": "auto",
+    "notify_loan_officer": "auto",
+    "request_document": "approval_required",
+    "schedule_call": "approval_required",
+    "send_borrower_message": "auto",
+    "update_status": "auto"
+  },
+  "tenant_jefferson_credit": {
+    "default": "approval_required",
+    "no_op": "auto",
+    "notify_loan_officer": "auto",
+    "request_document": "approval_required",
+    "schedule_call": "reject",
+    "send_borrower_message": "approval_required",
+    "update_status": "approval_required"
+  }
+}
