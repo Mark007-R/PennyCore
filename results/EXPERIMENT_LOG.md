@@ -31,6 +31,52 @@ Schema for each entry:
 
 ---
 
+## Day 17 — 2026-05-20 — Four policy engines on 200 scenarios; declarative wins outright
+
+- **Study:** orchestrator policy engines (Phase 3, second half).
+- **Strategies run:** `declarative`, `python_rules`, `naive_llm`, `llm_judge`
+- **Dataset:** the Day-16 200-scenario set, three tenants
+  (`tenant_acme_bank`, `tenant_globetrek_concierge`,
+  `tenant_jefferson_credit`).
+- **Mock-mode behaviour (documented):** naive applies a tenant-
+  agnostic event-type heuristic (emulating a small-LLM that
+  over-indexes on event semantics); llm_judge reads the policy
+  table directly (emulating a perfectly-prompt-following LLM).
+  Real-LLM re-run is scheduled for Day 28.
+- **Results artifact:**
+  `results/phase3_orchestrator_results.json` (800 per-scenario
+  rows + 4 per-strategy aggregates with correctness, latency,
+  cost, confusion matrix, per-tenant + per-event-type rollup,
+  static rubric scores).
+- **Headline numbers:**
+
+| Strategy | Correctness | p50 latency (µs) | p95 (µs) | LLM calls | $/100 dec | Audit | Maint |
+|----------|-------------|-------------------|-----------|-----------|-----------|-------|-------|
+| declarative  | **1.000** | 0.60 | 0.80 |   0 | $0.000  | 5 | 5 |
+| python_rules | **1.000** | 0.70 | 0.90 |   0 | $0.000  | 3 | 2 |
+| naive_llm    |   0.540   | 1.80 | 2.10 | 200 | $0.139  | 2 | 4 |
+| llm_judge    | **1.000** | 6.70 | 7.60 | 200 | $0.111  | 4 | 4 |
+
+- **Failure-mode detail (naive):**
+  - Per-tenant: Acme 0.597, Globetrek 0.546, Jefferson **0.478**
+    — naive fails worst on the tenant with the most idiosyncratic
+    rules, exactly as predicted.
+  - Per-event-type: anomaly_detected **0.222**, status_changed
+    0.333, message_received 0.606, document_uploaded 0.600,
+    system_event 1.000.
+  - Per-expected-decision: auto 0.583, approval_required 0.500,
+    **reject 0.000** (5/5 wrong — naive has no path to `reject`,
+    silently routes high-risk actions to `auto` instead).
+- **Verdict:** the Day-10 declarative incumbent is unbeaten on
+  this dataset. Phase-3 wrap-up (Day 18) will lock declarative as
+  the orchestrator champion the same way recency-vs-hybrid will
+  lock the retrieval champion. LLM-as-judge stays in the codebase
+  reserved for the "ambiguous policy" slice — Day 28 (Phase 5)
+  will test whether that slice exists in practice and whether the
+  judge can actually win it.
+
+---
+
 ## Day 16 — 2026-05-19 — Orchestrator benchmark dataset lands (200 tuples, 3 tenants)
 
 - **Study:** orchestrator (Day-17 / Day-18 will consume).
