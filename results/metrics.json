@@ -1154,6 +1154,46 @@
         ]
       },
       "notes": "Day-17 policy-engine bake-off. Declarative wins outright. Naive LLM 54% correctness AND misses every reject scenario; LLM-as-judge ties declarative correctness in mock mode (perfect-LLM emulation) but pays ~$0.11/100 dec and 11x slower latency. Phase-5 real-LLM re-run scheduled Day 28."
+    },
+    {
+      "date": "2026-05-21",
+      "day": 18,
+      "phase": 3,
+      "component": "both",
+      "feature": "phase3_wrap_consolidated_view_and_champions",
+      "feature_shipped": true,
+      "llm_mode": "mock",
+      "tests_added_today": 0,
+      "tests_passing": 498,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset; PG-integration tests gated",
+      "takehome_score": null,
+      "notes": "Phase-3 wrap. Consolidated Day-15 context-engine and Day-17 orchestrator artifacts into one view at results/phase3_day18_consolidated.json. Named champions: hybrid (context-engine, under mock-proxy caveat \u2014 locked subject to Phase-5/Day-27 real-LLM re-judge) and declarative (orchestrator, outright). 9 strategies x 400 scenarios head-to-head. No new benchmarks or production code today; consolidation only.",
+      "phase3_wrap": {
+        "artifacts": [
+          "results/phase3_day18_consolidated.json",
+          "results/phase3_orchestrator_correctness.png",
+          "results/phase3_orchestrator_cost_latency.png",
+          "results/phase3_consolidated_champions.png",
+          "notebooks/phase3_orchestrator_analysis.ipynb",
+          "scripts/build_day18_artifacts.py"
+        ],
+        "champions": {
+          "context_engine": "hybrid",
+          "orchestrator": "declarative"
+        },
+        "champion_caveats": {
+          "context_engine": "Locked subject to Phase-5/Day-27 real-LLM re-judge; mock-proxy mean quality 2.910 vs recency 3.035 \u2014 wins on quality-per-1K-tokens (3.47 vs 2.13) and emits 41% fewer brief tokens at parity fact recall on 91.5% of 200 pairs.",
+          "orchestrator": "None \u2014 wins on every measured axis (correctness 1.000, p50 0.6 us, $0/100 dec, 5/5 audit + maint)."
+        },
+        "strategies_compared_total": 9,
+        "scenarios_total": 400,
+        "carry_to_phase_4": [
+          "Hybrid retrieval = production retrieval path",
+          "Declarative = production policy path",
+          "Both Phase-3 datasets carry forward unchanged"
+        ]
+      }
     }
   ]
 }

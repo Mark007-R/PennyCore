@@ -31,6 +31,73 @@ Schema for each entry:
 
 ---
 
+## Day 18 — 2026-05-21 — Phase-3 wrap: champions named, both halves consolidated
+
+- **Study:** both halves (context-engine + orchestrator), one
+  consolidated view.
+- **Strategies / artifacts:**
+  - context-engine: `naive_dump`, `recency`, `semantic`, `summarized`,
+    `hybrid` (Days 12-15 work, mock proxy).
+  - orchestrator: `declarative`, `python_rules`, `naive_llm`,
+    `llm_judge` (Days 16-17 work, mock-mode).
+- **No new experiments today** — consolidation only. Numbers lifted
+  verbatim from `phase3_day15_analysis.json` and
+  `phase3_orchestrator_results.json` with consistent rounding into
+  `results/phase3_day18_consolidated.json` (provenance trace inline
+  via `source_artifacts` keys per section).
+- **Champions named:**
+  - **context-engine = `hybrid`** under explicit mock-mode caveat.
+    Wins on cost-frontier (quality per 1K tokens: 3.47 vs recency
+    2.13), emits 41% fewer brief tokens than recency at parity fact
+    recall on 91.5% of 200 pairs. Mean mock-proxy quality 2.910 vs
+    recency's 3.035; the 0.125-point deficit is the mock-summary
+    artifact on the 17 long + very_long pairs where the cold tail
+    gets compressed. Locked subject to the Phase-5 / Day-27 real-LLM
+    re-judge that reads the same results file and replaces the
+    `quality_score` column.
+  - **orchestrator = `declarative`** outright (no caveat). 100%
+    correctness, 0.6 µs p50, $0/100 dec, 5/5 audit + maint. Ties
+    `python_rules` (loses maint 2/5) and `llm_judge` (loses cost
+    $0.111/100 dec + ~11× latency) on correctness; beats `naive_llm`
+    by 46 points on correctness and by 5/5 on `reject` scenarios
+    (naive misses every one).
+- **Headline findings:**
+  1. 9 strategies × 400 scenarios → 2 champions. Both champions are
+     the strategies that came in with deliberate domain shape
+     (tiered retrieval with bounded brief, declarative policy table
+     compliance can edit).
+  2. The "just paste it into the prompt" naive baseline is the worst
+     performer in both halves — recency-ties naive on retrieval
+     quality at slightly worse token cost; naive-llm policy drops to
+     54% correctness AND misses every `reject` scenario.
+  3. LLM-as-judge on exact policy tables is pure cost overhead — ties
+     declarative on correctness, costs 11× more latency and $0.111
+     per 100 decisions. Reserved for an ambiguous-policy slice that
+     Phase 5 / Day 28 will test for explicitly.
+- **Open questions carrying to Phase 4 + Phase 5:**
+  - Real-LLM re-judge (Day 27) — does the 17-pair hybrid-vs-recency
+    mock gap close?
+  - Ambiguous-policy slice (Day 28) — does LLM-as-judge earn its 11×
+    latency cost anywhere?
+  - Multi-tenant isolation (Day 20, 15 tests) — is the `tenant_id`
+    scoping the benchmark assumes actually enforced at the data
+    access boundary?
+  - Idempotency (Day 19, 20 tests) — does duplicate-event delivery
+    produce exactly one action under load?
+- **Results artifact:**
+  `results/phase3_day18_consolidated.json` + three new charts
+  (`phase3_orchestrator_correctness.png`,
+  `phase3_orchestrator_cost_latency.png`,
+  `phase3_consolidated_champions.png`) +
+  `notebooks/phase3_orchestrator_analysis.ipynb` (mirror of the
+  context-engine analysis notebook from Day 15).
+- **Tests posture:** unchanged — 498 passed, 10 skipped (PG
+  integration gated on `DATABASE_URL`). No production code touched.
+- **Verdict:** Phase-3 ships its two champions on schedule. Phase-3
+  PR (#5) squash-merges into `main` today.
+
+---
+
 ## Day 17 — 2026-05-20 — Four policy engines on 200 scenarios; declarative wins outright
 
 - **Study:** orchestrator policy engines (Phase 3, second half).
