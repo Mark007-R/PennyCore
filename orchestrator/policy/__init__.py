@@ -1,25 +1,27 @@
-"""Policy engines for the orchestrator (Day 10, Phase 2).
+"""Policy engines for the orchestrator.
 
-The policy engine sits between the planner's `ActionProposal` and the
-executor / approval queue. Given (tenant_id, action_type), it returns a
-`PolicyDecision` from `contracts.policies`:
+Day 10 shipped one implementation — :class:`DeclarativePolicyEngine` —
+the dict-backed champion that satisfies the external scorecard's
+``configure_policies(...)`` contract. Day 17 (Phase 3) adds three
+competitors so the comparison study can pick a champion on
+correctness, latency, cost, auditability, and maintainability:
 
-  * `AUTO`              — pipeline executes immediately (audit logs it).
-  * `APPROVAL_REQUIRED` — pipeline enqueues for human review.
-  * `REJECT`            — pipeline declines the action; no execution path.
+* :class:`PythonRulesPolicyEngine` — same policy table compiled into a
+  per-tenant Python callable. Demonstrates the cost of expressiveness
+  over a config dict.
+* :class:`NaivePolicyEngine` — "just ask the LLM" baseline; the policy
+  is rendered as English narrative and the LLM emits free-form text.
+* :class:`LLMJudgePolicyEngine` — structured LLM-as-judge over a JSON
+  policy table; same correctness as declarative in mock mode, real
+  LLM cost.
 
-Day 10 ships ONE implementation — `DeclarativePolicyEngine` — a dict-backed
-champion that satisfies the external scorecard's `configure_policies(...)`
-contract. Phase 3 (Days 16-18) introduces three competitors:
-`python_rules`, `llm_judge`, `naive`, all sharing the same `PolicyEngine`
-Protocol. Picking the champion is the Phase-3 deliverable; today the
-declarative engine is locked in for the Phase-2 MVP and for the takehome
-adapter.
+All four engines share the ``set_policies(tenant_id, dict)`` /
+``decide(tenant_id, action_type, event_context=None)`` shape so the
+Day-17 benchmark harness can drop them into the same evaluation loop
+without per-engine glue code.
 
-Multi-tenant invariant (rule 15): every engine method takes `tenant_id` —
-there is no global / cross-tenant config path. The declarative store is a
-two-level dict (`{tenant_id: {action_type: decision}}`) so a tenant's
-policy mutation cannot reach another tenant by construction.
+Multi-tenant invariant (rule 15): every engine keys its internal
+state by ``tenant_id`` with no shared mutable cross-tenant table.
 """
 
 from __future__ import annotations
@@ -29,9 +31,15 @@ from orchestrator.policy.declarative import (
     PolicyEngine,
     UnknownPolicyDecisionError,
 )
+from orchestrator.policy.llm_judge import LLMJudgePolicyEngine
+from orchestrator.policy.naive import NaivePolicyEngine
+from orchestrator.policy.python_rules import PythonRulesPolicyEngine
 
 __all__ = [
     "DeclarativePolicyEngine",
+    "LLMJudgePolicyEngine",
+    "NaivePolicyEngine",
     "PolicyEngine",
+    "PythonRulesPolicyEngine",
     "UnknownPolicyDecisionError",
 ]

@@ -41,7 +41,7 @@ explicitly (see `test_declarative_policy.py`).
 from __future__ import annotations
 
 import threading
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from contracts.actions import ActionType
 from contracts.policies import PolicyDecision
@@ -80,7 +80,10 @@ class PolicyEngine(Protocol):
     ) -> None: ...
 
     def decide(
-        self, tenant_id: str, action_type: ActionType | str
+        self,
+        tenant_id: str,
+        action_type: ActionType | str,
+        event_context: dict[str, Any] | None = None,
     ) -> PolicyDecision: ...
 
 
@@ -155,7 +158,10 @@ class DeclarativePolicyEngine:
             self._by_tenant[tenant_id] = normalized
 
     def decide(
-        self, tenant_id: str, action_type: ActionType | str
+        self,
+        tenant_id: str,
+        action_type: ActionType | str,
+        event_context: dict[str, Any] | None = None,
     ) -> PolicyDecision:
         """Resolve the decision for (tenant_id, action_type).
 
@@ -166,7 +172,13 @@ class DeclarativePolicyEngine:
         evaluator's scenario 1 never configures a `"default"` for
         every action_type the planner could emit; the safe default
         keeps the structural checks passing.
+
+        ``event_context`` is accepted for parity with the Phase-3
+        Python-rules / LLM-judge / naive engines (Day 17). The
+        declarative engine never consults it — the dict lookup is by
+        action_type alone.
         """
+        del event_context  # declarative engine ignores event context
         key = _normalize_action_type(action_type)
         with self._lock:
             table = self._by_tenant.get(tenant_id)

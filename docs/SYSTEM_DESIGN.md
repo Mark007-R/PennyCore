@@ -443,7 +443,7 @@ backstop that catches bugs in the contract.
 | ----- | ---- | ------------------------- |
 | 1 | 1–4   | Folder scaffold (Day 1), this doc (Day 2), schema DDL + Pydantic contracts (Day 3), Docker + FastAPI scaffolds (Day 4) |
 | 2 | 5–11  | Ingestion + linking + brief-assembly (recency-only) + planner + policy + queue + executor + audit. End-to-end Jane scenario green on Day 11. Takehome adapters (Day 7, Day 10). |
-| 3 | 12–18 | Build benchmark datasets, implement all 4 retrieval strategies + all 4 policy strategies, run head-to-head. Pick champions on Day 18. |
+| 3 | 12–18 | Build benchmark datasets (Day 12 context-engine 200 pairs, Day 16 orchestrator 200 tuples), implement 5 retrieval strategies (naive, recency, semantic, summarized, hybrid — Days 13-15) + 4 policy strategies (Day 17), run head-to-head. Pick champions on Day 18. |
 | 4 | 19–23 | Idempotency, isolation, race-condition, load, and graceful-degradation test suites. RLS lands here. Pre-commit secret-scan hardens here. |
 | 5 | 24–28 | Re-ranker, semantic cache, N-of-M approval, naive-baseline comparisons. |
 | 6 | 29–32 | Production-grade Dockerfiles, OpenTelemetry, admin UI, demo UI. |

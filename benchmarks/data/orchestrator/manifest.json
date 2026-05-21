@@ -1,0 +1,86 @@
+{
+  "action_type_counts": {
+    "no_op": 35,
+    "notify_loan_officer": 69,
+    "request_document": 12,
+    "schedule_call": 15,
+    "send_borrower_message": 51,
+    "update_status": 18
+  },
+  "artifact_sha256": "fae4aa2d9d468bef4695106c59642424e64d44531349cb5e06569b185fbe1b84",
+  "build_timestamp_utc": "2026-05-19T06:52:46.232578+00:00",
+  "decision_counts": {
+    "approval_required": 68,
+    "auto": 127,
+    "reject": 5
+  },
+  "difficulty_counts": {
+    "easy": 92,
+    "hard": 42,
+    "medium": 66
+  },
+  "event_type_counts": {
+    "anomaly_detected": 27,
+    "document_uploaded": 30,
+    "message_received": 99,
+    "status_changed": 30,
+    "system_event": 14
+  },
+  "ground_truth_columns": [
+    "expected_action_type",
+    "expected_decision"
+  ],
+  "intent_counts": {
+    "anom_data_integrity": 6,
+    "anom_duplicate": 9,
+    "anom_rate_spike": 6,
+    "anom_unusual_pattern": 6,
+    "doc_blank": 3,
+    "doc_correct_bank_statements": 6,
+    "doc_correct_paystubs": 6,
+    "doc_correct_w2": 6,
+    "doc_expired": 3,
+    "doc_wrong_resume": 6,
+    "msg_complaint": 9,
+    "msg_concierge_hotel": 6,
+    "msg_concierge_taxi": 6,
+    "msg_doc_question": 9,
+    "msg_duplicate_followup": 6,
+    "msg_out_of_scope": 6,
+    "msg_prompt_injection": 6,
+    "msg_rate_question": 9,
+    "msg_schedule_request": 9,
+    "msg_status_check": 9,
+    "msg_thank_you": 9,
+    "msg_urgent_financial": 9,
+    "msg_wrong_customer": 6,
+    "status_approved": 9,
+    "status_rejected": 6,
+    "status_stalled": 6,
+    "status_underwriting": 9,
+    "sys_cache_flush": 3,
+    "sys_config_reload": 5,
+    "sys_heartbeat": 6
+  },
+  "n_scenarios": 200,
+  "schema_version": 1,
+  "seed": 42,
+  "sources": {
+    "synthetic": {
+      "count": 200,
+      "license": "PennyCore-internal synthetic \u2014 clearly-fake customer IDs only",
+      "templates": 30,
+      "tenants": 3
+    }
+  },
+  "tenant_counts": {
+    "tenant_acme_bank": 67,
+    "tenant_globetrek_concierge": 66,
+    "tenant_jefferson_credit": 67
+  },
+  "tenants": [
+    "tenant_acme_bank",
+    "tenant_globetrek_concierge",
+    "tenant_jefferson_credit"
+  ]
+}
