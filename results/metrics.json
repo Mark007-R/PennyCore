@@ -1194,6 +1194,36 @@
           "Both Phase-3 datasets carry forward unchanged"
         ]
       }
+    },
+    {
+      "date": "2026-05-22",
+      "day": 19,
+      "phase": 4,
+      "component": "both",
+      "feature": "idempotency_hardening_test_suite",
+      "feature_shipped": true,
+      "llm_mode": "mock",
+      "tests_added_today": 20,
+      "tests_passing": 518,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset; PG-integration tests gated",
+      "takehome_score": null,
+      "notes": "Phase 4 opens. 20-test integration suite in tests/integration/test_idempotency.py covers every replay surface: context-engine ingestion (pure+HTTP), DecisionPipeline (tenant_id, event_id) dedup, approval-queue double-decision guards, audit-chain immutability under replay, concurrent-thread races. All 20 pass on first run; no production code patch required. Phase-2 dedup oracles held under the Phase-4 stress harness.",
+      "idempotency_hardening": {
+        "test_classes": 5,
+        "tests_total": 20,
+        "tests_passed_first_run": 20,
+        "production_patches_required": 0,
+        "coverage_idempotency_modules": {
+          "context_engine/ingestion.py": 1.0,
+          "context_engine/repository.py": 0.88,
+          "orchestrator/decision_pipeline.py": 0.74,
+          "orchestrator/approval_queue.py": 0.87,
+          "orchestrator/audit.py": 0.82
+        },
+        "concurrency_workers_max": 10,
+        "replay_storm_iterations": 1000
+      }
     }
   ]
 }
