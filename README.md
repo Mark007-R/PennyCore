@@ -12,11 +12,15 @@ scorecard at any time.
 
 ## Status
 
-**Day 18 of 35** — Phase 3 complete. Phases 1-3 merged to `main`; Phase 4
-(Hardening, Days 19-23) opens tomorrow.
+**Day 19 of 35** — Phase 4 (Hardening, Days 19-23) **in progress**.
+Phases 1-3 merged to `main`. Day 19 shipped the 20-test idempotency
+hardening suite (`tests/integration/test_idempotency.py`); Days 20-23
+cover multi-tenant isolation, race conditions, load testing, and
+graceful-degradation failure modes.
 
 Phase-3 champions (full numbers in
-`results/phase3_day18_consolidated.json`):
+`results/phase3_day18_consolidated.json`, full discussion in
+[docs/POLICIES.md](docs/POLICIES.md)):
 
 - **Context-engine retrieval champion: `hybrid`** — 41% fewer brief
   tokens than recency on aggregate at parity fact recall on 183 of 200
@@ -29,9 +33,12 @@ Phase-3 champions (full numbers in
 
 Phase-3 dataset shape: 5 retrieval strategies × 200 pairs +
 4 policy strategies × 200 scenarios = 9 strategies head-to-head on 400
-total inputs. Takehome scorecard: context-engine 5/5 non-LLM,
-orchestrator 5/6 (LLM-gated scenario fails until the Phase-5 LLM
-provider switch).
+total inputs. Takehome scorecard: context-engine 5/5 non-LLM
+(scenario 6 needs the `openai` SDK in the takehome venv — adapter
+otherwise passes), orchestrator **6/6**.
+
+Test suite: **518 passing**, 10 Postgres-integration tests gated on
+`DATABASE_URL`.
 
 ## Layout
 
@@ -48,11 +55,17 @@ provider switch).
   - `benchmarks/data/orchestrator/` — 200-tuple orchestrator dataset
     (Day 16)
 - `migrations/` — versioned SQL DDL
-- `tests/` — pytest (unit, integration, adversarial); 450+ tests
+- `tests/` — pytest (unit, integration, adversarial); 518 tests
 - `results/` — metrics journal, experiment log, comparison charts +
   takehome scorecard
 - `notebooks/` — Phase-3 / Phase-5 analysis notebooks
-- `docs/` — system design, API contracts, research survey
+- `docs/` — [SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md) (architecture),
+  [API.md](docs/API.md) (HTTP contracts),
+  [POLICIES.md](docs/POLICIES.md) (tenant policy model + Phase-3
+  comparison),
+  [DEMO_SCENARIO.md](docs/DEMO_SCENARIO.md) (Jane Doe's mortgage
+  walkthrough), [RESEARCH_SURVEY.md](docs/RESEARCH_SURVEY.md)
+  (Phase-1 production-AI-infrastructure survey)
 - `scripts/` — CLI helpers (migrations, takehome eval runner, diagram
   renderers, local-run / CI shells)
 
