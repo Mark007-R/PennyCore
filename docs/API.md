@@ -11,9 +11,22 @@ Tenant-scoped reads / writes everywhere; multi-tenant invariant (rule
 - **orchestrator** runs on `http://localhost:8002` under
   docker-compose; `http://0.0.0.0:8000` inside the container.
 
-Phase 3 will add `/benchmarks/*` and `/policy_engines/*` diagnostic
-endpoints; Phase 4 will add `/audit/*` (the full audit log query
-surface). This doc captures what's stable through Day 11.
+This doc captures what's stable through Day 11. Phase 4 (Days 19-23)
+adds `/audit/*` (the full audit-log query surface). Phase 6
+(Days 29-32) adds an admin UI (Streamlit / FastAPI+HTMX) over the
+`/approvals` and `/actions/*` endpoints documented below — the API
+itself doesn't change.
+
+**Companion docs:**
+
+- [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md) — architecture, data flow,
+  invariants.
+- [POLICIES.md](POLICIES.md) — the policy model that drives the
+  `/approvals` endpoints below; the Phase-3 comparison locking
+  `declarative` as the champion.
+- [DEMO_SCENARIO.md](DEMO_SCENARIO.md) — Jane Doe's mortgage
+  walkthrough; the canonical request sequence that exercises every
+  endpoint on this page end-to-end.
 
 ## Conventions
 

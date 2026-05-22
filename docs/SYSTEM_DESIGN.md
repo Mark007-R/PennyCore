@@ -321,8 +321,12 @@ Mechanism:
   implementing four strategies (recency, semantic, summarized, hybrid).
   Each implements the same `Retriever` Protocol with one method:
   `retrieve(customer_id, query, token_budget) -> list[BriefSegment]`. The
-  brief assembler is strategy-agnostic; comparison studies in Phase 3 swap
-  the strategy and rerun the benchmark.
+  brief assembler is strategy-agnostic; Phase 3 comparison studies (Days
+  12-15) ran all four plus a `naive_dump` baseline head-to-head over 200
+  pairs and named **`hybrid`** the production champion (41% fewer brief
+  tokens than recency at parity fact recall; locked subject to Phase 5 /
+  Day 27 real-LLM re-judge). `semantic` and `summarized` remain in the
+  codebase as comparison rows, not as defaults.
 - **Brief assembly** (`context_engine/brief_assembly.py`): takes the
   `BriefSegment` list from retrieval, sorts by priority, packs into a
   budget. Rendering is templated (Jinja2) so the brief is human-readable
@@ -356,8 +360,14 @@ Mechanism:
 - **Policy engine** (`orchestrator/policy/*.py`): four sibling modules
   implementing four strategies (declarative YAML, Python rules, LLM-judge,
   naive LLM passthrough). Each implements the same `PolicyEngine`
-  Protocol: `decide(tenant_id, action) -> PolicyDecision`. Phase 3 picks
-  the champion. The rest of the orchestrator is policy-agnostic.
+  Protocol: `decide(tenant_id, action) -> PolicyDecision`. Phase 3 (Day
+  17) ran all four head-to-head on 200 scenarios and named
+  **`declarative`** the champion outright: 1.000 correctness, 0.6 µs p50
+  latency, $0 per 100 decisions, 5/5 auditability + 5/5 maintainability.
+  `naive_llm` was the costly cautionary tale at 54% correctness with 0/5
+  on `reject`-required scenarios; `llm_judge` stays in the codebase for
+  the Phase-5 / Day-28 ambiguous-policy slice. The rest of the
+  orchestrator is policy-agnostic. Full case in [POLICIES.md](POLICIES.md).
 - **Approval queue** (`orchestrator/approval_queue.py`): thin wrapper over
   the `approval_queue` table. Three operations: enqueue, approve, reject.
   All three write to audit_log.
@@ -443,8 +453,8 @@ backstop that catches bugs in the contract.
 | ----- | ---- | ------------------------- |
 | 1 | 1–4   | Folder scaffold (Day 1), this doc (Day 2), schema DDL + Pydantic contracts (Day 3), Docker + FastAPI scaffolds (Day 4) |
 | 2 | 5–11  | Ingestion + linking + brief-assembly (recency-only) + planner + policy + queue + executor + audit. End-to-end Jane scenario green on Day 11. Takehome adapters (Day 7, Day 10). |
-| 3 | 12–18 | Build benchmark datasets (Day 12 context-engine 200 pairs, Day 16 orchestrator 200 tuples), implement 5 retrieval strategies (naive, recency, semantic, summarized, hybrid — Days 13-15) + 4 policy strategies (Day 17), run head-to-head. Pick champions on Day 18. |
-| 4 | 19–23 | Idempotency, isolation, race-condition, load, and graceful-degradation test suites. RLS lands here. Pre-commit secret-scan hardens here. |
+| 3 | 12–18 | ✅ Built benchmark datasets (Day 12 context-engine 200 pairs, Day 16 orchestrator 200 tuples), implemented 5 retrieval strategies (naive_dump, recency, semantic, summarized, hybrid — Days 13-15) + 4 policy strategies (Day 17), ran 9-strategy head-to-head on 400 inputs. **Champions named Day 18**: `hybrid` retrieval, `declarative` policy. Full case in [POLICIES.md](POLICIES.md). |
+| 4 | 19–23 | Idempotency (Day 19 ✅ — 20-test integration suite, see `tests/integration/test_idempotency.py`), isolation, race-condition, load, and graceful-degradation test suites. RLS lands here. Pre-commit secret-scan hardens here. |
 | 5 | 24–28 | Re-ranker, semantic cache, N-of-M approval, naive-baseline comparisons. |
 | 6 | 29–32 | Production-grade Dockerfiles, OpenTelemetry, admin UI, demo UI. |
 | 7 | 33–35 | Test sweep, READMEs, ARCHITECTURE.md, demo video, final scorecard pass. |
@@ -493,7 +503,25 @@ backstop that catches bugs in the contract.
 
 ---
 
+## 11. Companion docs
+
+- **[API.md](API.md)** — HTTP contracts for both services (request /
+  response shapes, status codes, idempotency-key reconciliation).
+- **[POLICIES.md](POLICIES.md)** — tenant policy model, all 4 engines,
+  Phase-3 head-to-head comparison, declarative-champion case,
+  compliance-authoring workflow.
+- **[DEMO_SCENARIO.md](DEMO_SCENARIO.md)** — Jane Doe's mortgage
+  walkthrough — the canonical end-to-end story. The
+  `tests/integration/test_end_to_end_jane_scenario.py` test is the
+  source of truth this doc narrates.
+- **[RESEARCH_SURVEY.md](RESEARCH_SURVEY.md)** — Phase-1 survey of
+  production AI infrastructure (Decagon, Sierra, Parloa, Anthropic,
+  MultiWOZ) and the implications for PennyCore.
+
+---
+
 *End of design draft 1. Day 3 turns the table list in §4 into SQL DDL +
 Pydantic models in `contracts/`. Day 4 stands up Docker Compose and the
 FastAPI scaffolds for both services so the system boots end-to-end (with
-empty implementations) before Phase 2 starts filling them in.*
+empty implementations) before Phase 2 starts filling them in. Phase 3
+wrap (Day 18) named champions; Phase 4 (Days 19-23) hardens around them.*
