@@ -50,9 +50,13 @@ class AuditLog(Protocol):
 
     def entries_for_tenant(self, tenant_id: str) -> list[AuditLogEntry]: ...
 
-    def entries_for_action(self, action_id: str) -> list[AuditLogEntry]: ...
+    def entries_for_action(
+        self, action_id: str, *, tenant_id: str | None = None
+    ) -> list[AuditLogEntry]: ...
 
-    def entries_for_event(self, event_id: str) -> list[AuditLogEntry]: ...
+    def entries_for_event(
+        self, event_id: str, *, tenant_id: str | None = None
+    ) -> list[AuditLogEntry]: ...
 
 
 class InMemoryAuditLog:
@@ -100,13 +104,30 @@ class InMemoryAuditLog:
         with self._lock:
             return list(self._by_tenant.get(tenant_id, []))
 
-    def entries_for_action(self, action_id: str) -> list[AuditLogEntry]:
+    def entries_for_action(
+        self, action_id: str, *, tenant_id: str | None = None
+    ) -> list[AuditLogEntry]:
+        """All audit rows for `action_id`, FIFO. When `tenant_id` is
+        supplied, rows from any other tenant are filtered out — this
+        is a defense-in-depth check for surfaces that look up by a
+        globally-unique action_id and want to refuse cross-tenant
+        reads even if the id was guessed. The Day 20 multi-tenant
+        isolation suite exercises both paths."""
         with self._lock:
-            return list(self._by_action.get(action_id, []))
+            rows = self._by_action.get(action_id, [])
+            if tenant_id is None:
+                return list(rows)
+            return [r for r in rows if r.tenant_id == tenant_id]
 
-    def entries_for_event(self, event_id: str) -> list[AuditLogEntry]:
+    def entries_for_event(
+        self, event_id: str, *, tenant_id: str | None = None
+    ) -> list[AuditLogEntry]:
+        """Same tenant-filter semantics as `entries_for_action`."""
         with self._lock:
-            return list(self._by_event.get(event_id, []))
+            rows = self._by_event.get(event_id, [])
+            if tenant_id is None:
+                return list(rows)
+            return [r for r in rows if r.tenant_id == tenant_id]
 
     def all_entries(self) -> list[AuditLogEntry]:
         """Aggregate view — used by metrics + Phase-3 benchmarking

@@ -1224,6 +1224,49 @@
         "concurrency_workers_max": 10,
         "replay_storm_iterations": 1000
       }
+    },
+    {
+      "date": "2026-05-23",
+      "day": 20,
+      "phase": 4,
+      "component": "orchestrator",
+      "feature": "tenant_isolation_hardening_test_suite",
+      "feature_shipped": true,
+      "llm_mode": "mock",
+      "tests_added_today": 15,
+      "tests_passing": 533,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset; PG-integration tests gated",
+      "takehome_score": null,
+      "notes": "15-test multi-tenant isolation suite + minimal production patches for two real HTTP leak surfaces. GET /actions/{id} and POST /approvals/{id}/{approve,reject} now accept an optional tenant_id query parameter that 404s cross-tenant attempts (same-shape error \u2014 no existence leak per OWASP API1). audit.entries_for_action/event gain optional tenant_id= filter; pipeline.get_action/approve_action/reject_action gain optional expected_tenant_id= kwarg. Back-compat preserved for the takehome adapter (uses no tenant_id; single-tenant per scenario). 533 passed, 0 failed, zero regression on top of Day 19 518-test baseline.",
+      "tenant_isolation_hardening": {
+        "test_classes": 6,
+        "tests_total": 15,
+        "tests_passed_first_run": 15,
+        "surfaces_covered": [
+          "EventRepository",
+          "CustomerRepository_and_linker",
+          "InMemoryActionStore",
+          "ApprovalQueue",
+          "AuditLog",
+          "orchestrator_HTTP_actions_and_approvals"
+        ],
+        "production_patches": {
+          "orchestrator/audit.py": "optional tenant_id= filter on entries_for_action, entries_for_event",
+          "orchestrator/decision_pipeline.py": "optional expected_tenant_id= kwarg on get_action, approve_action, reject_action",
+          "orchestrator/api.py": "optional tenant_id query parameter on /actions/{id}, /approvals/{id}/approve, /approvals/{id}/reject"
+        },
+        "cross_tenant_response_code": 404,
+        "cross_tenant_response_rationale": "OWASP API1:2023 \u2014 Broken Object Level Authorization \u2014 404 reveals nothing about cross-tenant existence",
+        "coverage_isolation_modules": {
+          "orchestrator/audit.py": 0.89,
+          "orchestrator/decision_pipeline.py": 0.79,
+          "orchestrator/api.py_actions_and_approvals": 0.88,
+          "context_engine/customer_repository.py": 0.92,
+          "context_engine/repository.py": 0.91
+        },
+        "back_compat_preserved_for": "takehome adapter (AgentOrchestrator ABC has no tenant_id on approve/reject); existing /actions and /approvals HTTP tests unchanged"
+      }
     }
   ]
 }

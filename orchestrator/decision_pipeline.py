@@ -246,12 +246,22 @@ class DecisionPipeline:
     # ------------------------------------------------------------------
 
     def approve_action(
-        self, action_id: str, *, decided_by: str = "human"
+        self,
+        action_id: str,
+        *,
+        decided_by: str = "human",
+        expected_tenant_id: str | None = None,
     ) -> Action:
         """Approve a pending action and execute it.
 
         Raises:
-          * `ActionNotFoundError` if action_id is unknown.
+          * `ActionNotFoundError` if action_id is unknown OR (when
+             `expected_tenant_id` is supplied) the action belongs to
+             a different tenant. Returning the same exception on a
+             cross-tenant attempt is deliberate: a 404 from the HTTP
+             layer reveals nothing about whether the action exists
+             elsewhere in the system. The Day 20 multi-tenant
+             hardening tests assert this property.
           * `ApprovalNotFoundError` if no queue row exists (the action
              was auto-executed or rejected at policy time).
           * `ApprovalStateError` if the queue row is already resolved
@@ -259,6 +269,13 @@ class DecisionPipeline:
         """
         with self._lock:
             action = self.actions.get(action_id)
+            if (
+                expected_tenant_id is not None
+                and action.tenant_id != expected_tenant_id
+            ):
+                raise ActionNotFoundError(
+                    f"no action with id={action_id!r}"
+                )
             # The queue raises if not pending — this enforces
             # double-approve protection (scenario 3).
             self.queue.approve(action_id, decided_by=decided_by)
@@ -289,15 +306,26 @@ class DecisionPipeline:
         *,
         reason: str = "",
         decided_by: str = "human",
+        expected_tenant_id: str | None = None,
     ) -> Action:
         """Reject a pending action.
 
         Same error contract as `approve_action`. The rejected action
         stays in the action store with `status=rejected`; the queue
-        row stays with `state=rejected` for the audit trail.
+        row stays with `state=rejected` for the audit trail. When
+        `expected_tenant_id` is supplied, a cross-tenant attempt
+        raises `ActionNotFoundError` rather than mutating state — the
+        Day 20 multi-tenant isolation invariant.
         """
         with self._lock:
             action = self.actions.get(action_id)
+            if (
+                expected_tenant_id is not None
+                and action.tenant_id != expected_tenant_id
+            ):
+                raise ActionNotFoundError(
+                    f"no action with id={action_id!r}"
+                )
             self.queue.reject(
                 action_id, reason=reason, decided_by=decided_by
             )
@@ -328,8 +356,22 @@ class DecisionPipeline:
     # Read paths
     # ------------------------------------------------------------------
 
-    def get_action(self, action_id: str) -> Action:
-        return self.actions.get(action_id)
+    def get_action(
+        self, action_id: str, *, expected_tenant_id: str | None = None
+    ) -> Action:
+        """Fetch an action by id. When `expected_tenant_id` is supplied
+        and the action belongs to a different tenant, raises
+        `ActionNotFoundError` (same shape as a true miss) so the HTTP
+        layer's 404 reveals nothing about cross-tenant existence."""
+        action = self.actions.get(action_id)
+        if (
+            expected_tenant_id is not None
+            and action.tenant_id != expected_tenant_id
+        ):
+            raise ActionNotFoundError(
+                f"no action with id={action_id!r}"
+            )
+        return action
 
     def list_actions_for_tenant(self, tenant_id: str) -> list[Action]:
         return self.actions.list_for_tenant(tenant_id)

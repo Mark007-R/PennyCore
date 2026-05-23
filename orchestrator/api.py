@@ -409,18 +409,29 @@ def approvals_list(
 def approvals_approve(
     action_id: str,
     decided_by: str = Query("api", min_length=1, max_length=128),
+    tenant_id: str | None = Query(default=None, min_length=1, max_length=64),
 ) -> dict[str, Any]:
     """Approve a pending action. The pipeline executes it and writes
     the approval + execution audit rows.
 
+    Multi-tenant invariant (rule 15): when `tenant_id` is supplied the
+    pipeline refuses any action that belongs to a different tenant —
+    response is a plain 404 with no leak that the action exists
+    elsewhere. Callers without a `tenant_id` get the legacy global
+    lookup (back-compat for in-process callers like the takehome
+    adapter, which is single-tenant per scenario). The Day 20 hardening
+    tests cover both paths.
+
     Errors:
-      * 404 — no such action or no pending row (already resolved /
-        never queued).
+      * 404 — no such action OR cross-tenant attempt with `tenant_id`
+        supplied OR no pending row (already resolved / never queued).
       * 409 — the action is in a non-approvable state (race condition
         — another approver beat us to it).
     """
     try:
-        action = _pipeline.approve_action(action_id, decided_by=decided_by)
+        action = _pipeline.approve_action(
+            action_id, decided_by=decided_by, expected_tenant_id=tenant_id
+        )
     except (ActionNotFoundError, ApprovalNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ApprovalStateError as exc:
@@ -433,15 +444,20 @@ def approvals_reject(
     action_id: str,
     reason: str = Query("", max_length=2048),
     decided_by: str = Query("api", min_length=1, max_length=128),
+    tenant_id: str | None = Query(default=None, min_length=1, max_length=64),
 ) -> dict[str, Any]:
     """Reject a pending action. The pipeline transitions it to
     `rejected` and writes the rejection audit row.
 
-    Same error contract as `/approvals/{action_id}/approve`.
+    Same error contract as `/approvals/{action_id}/approve`, including
+    the optional `tenant_id` cross-tenant guard.
     """
     try:
         action = _pipeline.reject_action(
-            action_id, reason=reason, decided_by=decided_by
+            action_id,
+            reason=reason,
+            decided_by=decided_by,
+            expected_tenant_id=tenant_id,
         )
     except (ActionNotFoundError, ApprovalNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -456,13 +472,25 @@ def approvals_reject(
 
 
 @app.get("/actions/{action_id}", tags=["actions"])
-def actions_get(action_id: str) -> dict[str, Any]:
+def actions_get(
+    action_id: str,
+    tenant_id: str | None = Query(default=None, min_length=1, max_length=64),
+) -> dict[str, Any]:
     """Fetch one action by ID. The audit trail is embedded.
 
-    Returns 404 if the action is unknown to this pipeline instance.
+    Multi-tenant invariant (rule 15): when `tenant_id` is supplied, an
+    action owned by a different tenant returns a plain 404 — the
+    response leaks nothing about whether the id exists for another
+    tenant. With no `tenant_id`, behaves as the legacy global lookup
+    (back-compat for the takehome adapter, which is single-tenant per
+    scenario by construction).
+
+    Returns 404 if the action is unknown to this pipeline instance OR
+    if `tenant_id` is supplied and the action belongs to a different
+    tenant.
     """
     try:
-        action = _pipeline.get_action(action_id)
+        action = _pipeline.get_action(action_id, expected_tenant_id=tenant_id)
     except ActionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return _action_view(action)
