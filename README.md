@@ -50,7 +50,8 @@ accumulating daily commits. Test suite: **543 passed, 10 skipped**
   audit 100%, decision_pipeline 99%.
 
 **Phase 3 champions** (full numbers in
-`results/phase3_day18_consolidated.json`):
+`results/phase3_day18_consolidated.json`, full discussion in
+[docs/POLICIES.md](docs/POLICIES.md)):
 
 - **Context-engine retrieval champion: `hybrid`** — 41% fewer brief
   tokens than recency on aggregate at parity fact recall on 183 of 200
@@ -63,9 +64,9 @@ accumulating daily commits. Test suite: **543 passed, 10 skipped**
 
 Phase-3 dataset shape: 5 retrieval strategies × 200 pairs +
 4 policy strategies × 200 scenarios = 9 strategies head-to-head on 400
-total inputs. Takehome scorecard: context-engine 5/5 non-LLM,
-orchestrator 5/6 (LLM-gated scenario fails until the Phase-5 LLM
-provider switch).
+total inputs. Takehome scorecard: context-engine 5/5 non-LLM
+(scenario 6 needs the `openai` SDK in the takehome venv — adapter
+otherwise passes), orchestrator **6/6**.
 
 ## Layout
 
@@ -86,7 +87,13 @@ provider switch).
 - `results/` — metrics journal, experiment log, comparison charts +
   takehome scorecard
 - `notebooks/` — Phase-3 / Phase-5 analysis notebooks
-- `docs/` — system design, API contracts, research survey
+- `docs/` — [SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md) (architecture),
+  [API.md](docs/API.md) (HTTP contracts),
+  [POLICIES.md](docs/POLICIES.md) (tenant policy model + Phase-3
+  comparison),
+  [DEMO_SCENARIO.md](docs/DEMO_SCENARIO.md) (Jane Doe's mortgage
+  walkthrough), [RESEARCH_SURVEY.md](docs/RESEARCH_SURVEY.md)
+  (Phase-1 production-AI-infrastructure survey)
 - `scripts/` — CLI helpers (migrations, takehome eval runner, diagram
   renderers, local-run / CI shells)
 
