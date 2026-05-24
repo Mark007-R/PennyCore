@@ -1,5 +1,5 @@
 {
-  "_about": "PennyCore \u00e2\u20ac\u201d append-only metrics journal. Each entry is a per-day snapshot; never overwrite past entries. Defined in SKILL Step 4 + the PRIMARY METRICS section. Initialized on Day 7 as a backfill (the journal was missed on Days 5 and 6 when the first measurable code shipped \u00e2\u20ac\u201d those days' numbers are NOT retroactively reconstructed; the day_05 and day_06 entries record only the binary 'feature shipped' fact so future readers know the journal started here). Comparison metrics (quality, cost, quality/$ ratios) start populating Day 12 when Phase 3 benchmarks land.",
+  "_about": "PennyCore â€” append-only metrics journal. Each entry is a per-day snapshot; never overwrite past entries. Defined in SKILL Step 4 + the PRIMARY METRICS section. Initialized on Day 7 as a backfill (the journal was missed on Days 5 and 6 when the first measurable code shipped â€” those days' numbers are NOT retroactively reconstructed; the day_05 and day_06 entries record only the binary 'feature shipped' fact so future readers know the journal started here). Comparison metrics (quality, cost, quality/$ ratios) start populating Day 12 when Phase 3 benchmarks land.",
   "schema_version": 1,
   "entries": [
     {
@@ -57,7 +57,7 @@
         "brief_tokens": 1570,
         "naive_tokens": 1059,
         "ratio": 1.483,
-        "interpretation": "at budget=2000 with 50-message history, the recency brief is LARGER than naive concat because it adds channel markers, timestamps, and action segments that naive concat omits. The ratio<1 win the Phase 3 hybrid is supposed to deliver only kicks in when the borrower history exceeds the budget \u00e2\u20ac\u201d the 200-history-pair benchmark on Day 12 quantifies that."
+        "interpretation": "at budget=2000 with 50-message history, the recency brief is LARGER than naive concat because it adds channel markers, timestamps, and action segments that naive concat omits. The ratio<1 win the Phase 3 hybrid is supposed to deliver only kicks in when the borrower history exceeds the budget â€” the 200-history-pair benchmark on Day 12 quantifies that."
       },
       "takehome_score": {
         "context_engine": {
@@ -144,7 +144,7 @@
         "event_id_published": "evt_963ff24cf2914a90b1318adf",
         "event_id_received": "evt_963ff24cf2914a90b1318adf",
         "round_trip_latency_observed_sec": "<1 (sleep 1 between publish and recent-read; not microbenchmarked today)",
-        "tenant_seeded": "INSERT INTO tenants (id, name, slug) VALUES ('acme', 'Acme Bank', 'acme-bank') \u00e2\u20ac\u201d required by Day-3 schema FK"
+        "tenant_seeded": "INSERT INTO tenants (id, name, slug) VALUES ('acme', 'Acme Bank', 'acme-bank') â€” required by Day-3 schema FK"
       },
       "notes": "Day 8 task was orchestrator-side subscriber, but verification revealed the publish side was still hardcoded to InMemoryEventBus. Added context-engine REDIS_URL bus dispatcher (3 new tests) so the two halves actually share a wire. Live docker stack confirms publish-to-Redis -> subscribe-from-Redis -> /events/recent works end-to-end."
     },
@@ -174,13 +174,13 @@
           "status_changed": "notify_loan_officer",
           "anomaly_detected": "notify_loan_officer",
           "system_event": "no_op",
-          "unknown": "notify_loan_officer (conservative default \u00e2\u20ac\u201d escalate to human)"
+          "unknown": "notify_loan_officer (conservative default â€” escalate to human)"
         },
         "fallback_signal": "ActionProposal.proposed_by = ProposedBy.FALLBACK on any LLM failure (network, JSON parse, schema violation, unknown action_type)"
       },
       "handler_chain": [
-        "make_buffered_handler(_recent_events)  \u00e2\u20ac\u201d Day 8",
-        "make_planning_handler(_recent_proposals)  \u00e2\u20ac\u201d Day 9"
+        "make_buffered_handler(_recent_events)  â€” Day 8",
+        "make_planning_handler(_recent_proposals)  â€” Day 9"
       ],
       "takehome_score": {
         "context_engine": null,
@@ -263,7 +263,7 @@
           "crossover_observed": false
         }
       },
-      "notes": "Day 9 planner is mock-mode-only in the live system (placeholder ANTHROPIC_API_KEY); LLM path covered by fake-client tests. Real-LLM exercise deferred to user-driven key setup or Phase 3 benchmark days. docker-compose up verification re-run after initial commit to close SKILL Step 4 'actually RUN the system' loop \u00e2\u20ac\u201d the bind-mounted orchestrator/ directory picks up planner.py without rebuild."
+      "notes": "Day 9 planner is mock-mode-only in the live system (placeholder ANTHROPIC_API_KEY); LLM path covered by fake-client tests. Real-LLM exercise deferred to user-driven key setup or Phase 3 benchmark days. docker-compose up verification re-run after initial commit to close SKILL Step 4 'actually RUN the system' loop â€” the bind-mounted orchestrator/ directory picks up planner.py without rebuild."
     },
     {
       "day": 10,
@@ -309,7 +309,7 @@
           "execution",
           "execution_failed"
         ],
-        "idempotency_key": "(tenant_id, event_id) dedup index in pipeline; mirrors planned Postgres UNIQUE constraint per SYSTEM_DESIGN \u00a75.1",
+        "idempotency_key": "(tenant_id, event_id) dedup index in pipeline; mirrors planned Postgres UNIQUE constraint per SYSTEM_DESIGN §5.1",
         "failure_isolation": "executor exception -> EXECUTION_FAILED audit + status, no exception leaks to caller; planner LLM failure -> rule-table fallback (Day 9 behavior)"
       },
       "takehome_score": {
@@ -405,7 +405,7 @@
         "isolation_verified": "acme customer_id (cust_4a3c7166...) disjoint from beta-bank customer_id (cust_92eee230...); action_id sets disjoint per-tenant",
         "idempotency_verified": "second POST with idempotency_key=live-jane-001 returned created=false deduped=true; orchestrator received 5 events not 6",
         "approve_path_verified": "POST /approvals/{id}/approve transitioned status to 'executed' and audit_trail captured [proposal, decision, approval, execution]",
-        "note": "live stack runs MOCK_LLM=true so planner emits rule-table-fallback proposals; the in-process E2E test exercises the same code paths against the same fallback path, so live-vs-test parity is intact. Live default-policy for acme is APPROVAL_REQUIRED (no docker-compose policy seeding shipped this phase \u2014 Phase 4 hardening adds a startup hook to load tenant policies from the policies table)"
+        "note": "live stack runs MOCK_LLM=true so planner emits rule-table-fallback proposals; the in-process E2E test exercises the same code paths against the same fallback path, so live-vs-test parity is intact. Live default-policy for acme is APPROVAL_REQUIRED (no docker-compose policy seeding shipped this phase — Phase 4 hardening adds a startup hook to load tenant policies from the policies table)"
       },
       "takehome_score": {
         "context_engine": {
@@ -446,9 +446,9 @@
           "tests_full_suite_runtime_sec": 1.93,
           "takehome_context_engine": "5/6 (5/5 non-LLM)",
           "takehome_orchestrator": "6/6",
-          "docker_compose_boot": "verified \u2014 all 4 containers healthy",
-          "e2e_round_trip_in_process": "verified \u2014 3 tests green",
-          "e2e_round_trip_live_docker": "verified \u2014 Jane scenario end-to-end through Redis + Postgres"
+          "docker_compose_boot": "verified — all 4 containers healthy",
+          "e2e_round_trip_in_process": "verified — 3 tests green",
+          "e2e_round_trip_live_docker": "verified — Jane scenario end-to-end through Redis + Postgres"
         },
         "champion_strategies_locked": {
           "ingestion": "FastAPI POST /events with X-Idempotency-Key header + (tenant_id, idempotency_key) UNIQUE oracle",
@@ -465,7 +465,7 @@
         },
         "carries_to_phase_3": "Champion = (declarative policy + recency-only retrieval). Phase 3 Days 12-15 build the context-engine benchmark dataset (200 history+query pairs) and implement strategies 1-5 (Naive/Recency/Semantic/Summarized/Hybrid); Days 16-18 the orchestrator policy-engine comparison (Naive-LLM/YAML/Python-rules/LLM-judge). All four orchestrator engines drop into the existing PolicyEngine Protocol without touching the pipeline."
       },
-      "notes": "Phase 2 wraps clean. The Day-11 deliverable is a single in-process E2E test module (3 tests) + a one-line fix to the takehome runner + the canonical scorecard re-run. NO new production code today by design \u2014 the phase wrap day is for locking in numbers, not introducing risk. Full suite 326/326 green (up from 323 Day-10) confirms no regressions. Live docker-compose verification adds a redundant signal that the in-process test isn't lying about what production does."
+      "notes": "Phase 2 wraps clean. The Day-11 deliverable is a single in-process E2E test module (3 tests) + a one-line fix to the takehome runner + the canonical scorecard re-run. NO new production code today by design — the phase wrap day is for locking in numbers, not introducing risk. Full suite 326/326 green (up from 323 Day-10) confirms no regressions. Live docker-compose verification adds a redundant signal that the in-process test isn't lying about what production does."
     },
     {
       "day": 11,
@@ -484,7 +484,7 @@
         "results/phase2_latency_backfill.json"
       ],
       "decision_pipeline_latency_ms": {
-        "what": "DecisionPipeline.handle_proposal() \u2014 synthetic proposal through policy(auto) -> action-store put -> mock executor -> audit writes",
+        "what": "DecisionPipeline.handle_proposal() — synthetic proposal through policy(auto) -> action-store put -> mock executor -> audit writes",
         "samples": 500,
         "warmup_excluded": 50,
         "policy_path": "auto (longest path: PROPOSAL + DECISION + EXECUTION audit rows)",
@@ -496,14 +496,14 @@
         "max": 0.6666,
         "mean": 0.0688,
         "stdev": 0.0441,
-        "interpretation": "Sub-millisecond at p99 \u2014 pure-Python dict mutations + in-memory audit appends. The 'max' tail (0.67 ms) is the worst single-sample outlier; p99 is what production SLOs should target."
+        "interpretation": "Sub-millisecond at p99 — pure-Python dict mutations + in-memory audit appends. The 'max' tail (0.67 ms) is the worst single-sample outlier; p99 is what production SLOs should target."
       },
       "end_to_end_latency_ms": {
         "what": "POST /events (context-engine) -> InMemoryEventBus -> orchestrator listener -> chain_handlers (buffer + planner + pipeline) -> audit writes. All in-process so the HTTP response time IS the end-to-end latency.",
         "samples": 500,
         "warmup_excluded": 50,
         "transport": "InMemoryEventBus (synchronous subscriber)",
-        "policy_path": "auto (every event auto-executes \u2014 longest pipeline path)",
+        "policy_path": "auto (every event auto-executes — longest pipeline path)",
         "llm_mode": "mock (rule-table fallback proposals)",
         "min": 1.5314,
         "p50": 1.7839,
@@ -521,7 +521,7 @@
         "production_caveat": "in-process bus is a LOWER BOUND on production E2E. Production Redis Pub/Sub adds wire latency + worker scheduling; AND the POST response returns before the orchestrator processes the event (fire-and-forget publish). Real production E2E lands via OTel spans in Phase 6 Day 30."
       },
       "api_docs": {
-        "what": "docs/API.md \u2014 first comprehensive API reference for both services. Captures every endpoint stable through Day 11 (context-engine: /, /healthz, /readyz, POST /events; orchestrator: /, /healthz, /readyz, /events/recent, /proposals/recent, /approvals, POST /approvals/{id}/approve, POST /approvals/{id}/reject, /actions/{id}) plus the action-type enum, policy-decision enum, audit-kind taxonomy, and the Phase 2 latency budget table.",
+        "what": "docs/API.md — first comprehensive API reference for both services. Captures every endpoint stable through Day 11 (context-engine: /, /healthz, /readyz, POST /events; orchestrator: /, /healthz, /readyz, /events/recent, /proposals/recent, /approvals, POST /approvals/{id}/approve, POST /approvals/{id}/reject, /actions/{id}) plus the action-type enum, policy-decision enum, audit-kind taxonomy, and the Phase 2 latency budget table.",
         "rationale": "Listed in the SKILL project folder structure but no specific day in the Day-by-Day table created it. Backfilling now lets the Phase 3 surface (which adds /benchmarks/* and /policy_engines/*) extend a documented baseline rather than build a doc from scratch."
       },
       "tests_passing": 326,
@@ -618,7 +618,7 @@
             "budget_saturation_pct": 98.6
           }
         },
-        "headline": "Recency baseline saturates the 8K budget at 99% on very_long histories (avg 7886 / 8000 tokens). That's the slice where smarter strategies (semantic, summarized, hybrid) need to win on quality/cost \u2014 the room to beat the baseline lives at the long tail."
+        "headline": "Recency baseline saturates the 8K budget at 99% on very_long histories (avg 7886 / 8000 tokens). That's the slice where smarter strategies (semantic, summarized, hybrid) need to win on quality/cost — the room to beat the baseline lives at the long tail."
       },
       "harness": {
         "registered_strategies_today": [
@@ -636,7 +636,7 @@
       },
       "tests_passing": 341,
       "tests_added_today": 15,
-      "tests_added_reason": "test_phase3_dataset.py \u2014 manifest invariants, loader contracts, harness boot path, recency-on-5-pairs smoke. Pre-Day-12 baseline was 326 (Day-11 metrics); 326 + 15 = 341.",
+      "tests_added_reason": "test_phase3_dataset.py — manifest invariants, loader contracts, harness boot path, recency-on-5-pairs smoke. Pre-Day-12 baseline was 326 (Day-11 metrics); 326 + 15 = 341.",
       "tests_skipped": 10,
       "tests_skipped_reason": "DATABASE_URL unset for PG-integration tests; gating unchanged from prior days",
       "notes": "Phase 3 PR opens today (phase/3-comparison-studies). Day 13 wires Strategy 1 (naive dump-everything) + Strategy 2 (recency-only is already wired as the harness baseline; Day 13 promotes it from baseline to first-class strategy in the comparison table). Day 14 adds semantic + summarized; Day 15 adds hybrid + LLM-as-judge quality scoring across all 5. Dataset is reproducible: re-run benchmarks/data/build_dataset.py --seed 42 to regenerate."
@@ -658,7 +658,7 @@
         "results/EXPERIMENT_LOG.md"
       ],
       "modules_modified": [
-        "benchmarks/context_engine_bench.py \u2014 registry split out; per-strategy budget override; per-bucket summary"
+        "benchmarks/context_engine_bench.py — registry split out; per-strategy budget override; per-bucket summary"
       ],
       "tests_passing": 356,
       "tests_added_today": 15,
@@ -779,7 +779,7 @@
         }
       },
       "results_added": [
-        "results/phase3_context_engine_results.json (overwritten \u2014 now contains both strategies' 200 pairs each = 400 result rows)"
+        "results/phase3_context_engine_results.json (overwritten — now contains both strategies' 200 pairs each = 400 result rows)"
       ],
       "notes": "Day 13 punch line: naive vs recency are token-equal on short/medium/long because both fit under 8K; the only place they diverge is the very_long bucket, where recency saturates 98.6% of its budget and drops ~558 tokens per pair on average. That is the headroom Day 14 semantic + summarized strategies will fight to claim. Counterintuitive: the headline cost contrast is 2%, not 6x, because the dataset distribution matches real customer-service traffic (most histories are short)."
     },
@@ -801,7 +801,7 @@
         "results/phase3_day14_analysis.json"
       ],
       "modules_modified": [
-        "benchmarks/strategies/__init__.py \u2014 register semantic + summarized"
+        "benchmarks/strategies/__init__.py — register semantic + summarized"
       ],
       "tests_passing": 392,
       "tests_added_today": 36,
@@ -809,7 +809,7 @@
       "tests_skipped": 10,
       "tests_skipped_reason": "Postgres integration gated on DATABASE_URL",
       "comparison_run": {
-        "dataset": "benchmarks/data/manifest.json \u2014 200 pairs (100 short / 60 medium / 30 long / 10 very_long)",
+        "dataset": "benchmarks/data/manifest.json — 200 pairs (100 short / 60 medium / 30 long / 10 very_long)",
         "llm_mode": "mock (deterministic; LLM-as-judge quality scoring lands Day 15)",
         "strategies": [
           "naive_dump",
@@ -900,7 +900,7 @@
         "note_on_mock_mode_summary": "Summarized average of 211 tokens is inflated by mock-mode summaries (200-char head + suffix). A real LLM (Day 15 re-judge) is expected to produce 600-1000-token summaries, narrowing the ratio vs recency from 7x to ~2-3x. The pattern (compression > saturation) holds either way."
       },
       "results_added": [
-        "results/phase3_context_engine_results.json (overwritten \u2014 now 800 rows: 200 pairs x 4 strategies, full brief text preserved for Day-15 re-judge)",
+        "results/phase3_context_engine_results.json (overwritten — now 800 rows: 200 pairs x 4 strategies, full brief text preserved for Day-15 re-judge)",
         "results/phase3_day14_analysis.json (per-pair Jaccard + tokens-saved breakdown)"
       ],
       "notes": "Day 14 punch line #1: semantic and recency are byte-identical on 190/200 pairs (short/medium/long) because everything fits under 8K - the only place the ranking signal matters is the 10 very_long pairs where the budget saturates. Day 14 punch line #2: summarized averages 211 tokens vs recencys 1421 - 7x compression - but the mock-mode 200-char summary inflates that ratio; the Day-15 re-judge with a real LLM will pin the realistic number. Day 14 punch line #3: semantic costs ~3.4x more retrieval latency than recency (0.8 vs 0.24 ms p50) - the embed+cosine per segment is cheap but adds up. All four strategies stay well under the 10ms target end-to-end retrieval budget."
@@ -927,10 +927,10 @@
         "results/phase3_day15_analysis.json"
       ],
       "modules_modified": [
-        "benchmarks/strategies/__init__.py \u2014 register hybrid"
+        "benchmarks/strategies/__init__.py — register hybrid"
       ],
       "comparison_run": {
-        "dataset": "benchmarks/data/manifest.json \u2014 200 pairs (100 short / 60 medium / 30 long / 10 very_long)",
+        "dataset": "benchmarks/data/manifest.json — 200 pairs (100 short / 60 medium / 30 long / 10 very_long)",
         "llm_mode": "mock (retrieval + judge); judge_mode = mock_proxy",
         "strategies": [
           "naive_dump",
@@ -1019,7 +1019,7 @@
         "judge_proxy_bias_note": "Fact-recall proxy is biased toward strategies that preserve verbatim text. Compression-based strategies (summarized, hybrid cold-tail) score lower under this proxy than they would under a real LLM-as-judge that rewards coherent summarization. Real-LLM re-run (Day 18 / Phase 5) is the canonical Quality column."
       },
       "results_added": [
-        "results/phase3_context_engine_results.json (overwritten \u2014 now 1000 rows: 200 pairs x 5 strategies, every row carries quality_score / query_recall / ground_truth_recall / judge_mode / judge_notes)",
+        "results/phase3_context_engine_results.json (overwritten — now 1000 rows: 200 pairs x 5 strategies, every row carries quality_score / query_recall / ground_truth_recall / judge_mode / judge_notes)",
         "results/phase3_day15_analysis.json (per-strategy aggregates + hybrid divergence buckets + proxy bias note)"
       ],
       "notes": "Day 15 punch line #1: hybrid emits 41% smaller briefs than recency on aggregate (838 vs 1422 tokens) at the same 8K budget, while matching recency's mock-mode quality on 183/200 pairs (91.5%). Day 15 punch line #2: under the mock-mode token-recall proxy, naive/recency/semantic produce identical mean quality (3.035) because their briefs are byte-identical on 95% of pairs - the proxy correctly identifies them as indistinguishable. Day 15 punch line #3: the mock-mode quality proxy is biased toward verbatim-preserving strategies. Real LLM-as-judge re-run (Day 18 with LLM_PROVIDER=anthropic) is the canonical Quality column; today's numbers are the proxy floor that compression strategies are expected to improve upon under a real LLM."
@@ -1083,9 +1083,9 @@
           "benchmarks/data/orchestrator/tenant_policies.json",
           "benchmarks/data/orchestrator/manifest.json"
         ],
-        "multi_tenant_divergence": "verified \u2014 same action under different tenants yields different decisions (e.g. send_borrower_message=auto under Acme/Globetrek vs approval_required under Jefferson; schedule_call=approval_required under Acme/Globetrek vs reject under Jefferson)"
+        "multi_tenant_divergence": "verified — same action under different tenants yields different decisions (e.g. send_borrower_message=auto under Acme/Globetrek vs approval_required under Jefferson; schedule_call=approval_required under Acme/Globetrek vs reject under Jefferson)"
       },
-      "notes": "Day-16 ships the orchestrator benchmark dataset only. No engines have been run against it yet \u2014 Day 17 implements + scores the four policy-engine variants (naive LLM / declarative / Python rules / LLM-as-judge) against expected_action_type + expected_decision."
+      "notes": "Day-16 ships the orchestrator benchmark dataset only. No engines have been run against it yet — Day 17 implements + scores the four policy-engine variants (naive LLM / declarative / Python rules / LLM-as-judge) against expected_action_type + expected_decision."
     },
     {
       "day": 17,
@@ -1168,7 +1168,7 @@
       "tests_skipped": 10,
       "tests_skipped_reason": "DATABASE_URL unset; PG-integration tests gated",
       "takehome_score": null,
-      "notes": "Phase-3 wrap. Consolidated Day-15 context-engine and Day-17 orchestrator artifacts into one view at results/phase3_day18_consolidated.json. Named champions: hybrid (context-engine, under mock-proxy caveat \u2014 locked subject to Phase-5/Day-27 real-LLM re-judge) and declarative (orchestrator, outright). 9 strategies x 400 scenarios head-to-head. No new benchmarks or production code today; consolidation only.",
+      "notes": "Phase-3 wrap. Consolidated Day-15 context-engine and Day-17 orchestrator artifacts into one view at results/phase3_day18_consolidated.json. Named champions: hybrid (context-engine, under mock-proxy caveat — locked subject to Phase-5/Day-27 real-LLM re-judge) and declarative (orchestrator, outright). 9 strategies x 400 scenarios head-to-head. No new benchmarks or production code today; consolidation only.",
       "phase3_wrap": {
         "artifacts": [
           "results/phase3_day18_consolidated.json",
@@ -1183,8 +1183,8 @@
           "orchestrator": "declarative"
         },
         "champion_caveats": {
-          "context_engine": "Locked subject to Phase-5/Day-27 real-LLM re-judge; mock-proxy mean quality 2.910 vs recency 3.035 \u2014 wins on quality-per-1K-tokens (3.47 vs 2.13) and emits 41% fewer brief tokens at parity fact recall on 91.5% of 200 pairs.",
-          "orchestrator": "None \u2014 wins on every measured axis (correctness 1.000, p50 0.6 us, $0/100 dec, 5/5 audit + maint)."
+          "context_engine": "Locked subject to Phase-5/Day-27 real-LLM re-judge; mock-proxy mean quality 2.910 vs recency 3.035 — wins on quality-per-1K-tokens (3.47 vs 2.13) and emits 41% fewer brief tokens at parity fact recall on 91.5% of 200 pairs.",
+          "orchestrator": "None — wins on every measured axis (correctness 1.000, p50 0.6 us, $0/100 dec, 5/5 audit + maint)."
         },
         "strategies_compared_total": 9,
         "scenarios_total": 400,
@@ -1238,7 +1238,7 @@
       "tests_skipped": 10,
       "tests_skipped_reason": "DATABASE_URL unset; PG-integration tests gated",
       "takehome_score": null,
-      "notes": "15-test multi-tenant isolation suite + minimal production patches for two real HTTP leak surfaces. GET /actions/{id} and POST /approvals/{id}/{approve,reject} now accept an optional tenant_id query parameter that 404s cross-tenant attempts (same-shape error \u2014 no existence leak per OWASP API1). audit.entries_for_action/event gain optional tenant_id= filter; pipeline.get_action/approve_action/reject_action gain optional expected_tenant_id= kwarg. Back-compat preserved for the takehome adapter (uses no tenant_id; single-tenant per scenario). 533 passed, 0 failed, zero regression on top of Day 19 518-test baseline.",
+      "notes": "15-test multi-tenant isolation suite + minimal production patches for two real HTTP leak surfaces. GET /actions/{id} and POST /approvals/{id}/{approve,reject} now accept an optional tenant_id query parameter that 404s cross-tenant attempts (same-shape error — no existence leak per OWASP API1). audit.entries_for_action/event gain optional tenant_id= filter; pipeline.get_action/approve_action/reject_action gain optional expected_tenant_id= kwarg. Back-compat preserved for the takehome adapter (uses no tenant_id; single-tenant per scenario). 533 passed, 0 failed, zero regression on top of Day 19 518-test baseline.",
       "tenant_isolation_hardening": {
         "test_classes": 6,
         "tests_total": 15,
@@ -1257,7 +1257,7 @@
           "orchestrator/api.py": "optional tenant_id query parameter on /actions/{id}, /approvals/{id}/approve, /approvals/{id}/reject"
         },
         "cross_tenant_response_code": 404,
-        "cross_tenant_response_rationale": "OWASP API1:2023 \u2014 Broken Object Level Authorization \u2014 404 reveals nothing about cross-tenant existence",
+        "cross_tenant_response_rationale": "OWASP API1:2023 — Broken Object Level Authorization — 404 reveals nothing about cross-tenant existence",
         "coverage_isolation_modules": {
           "orchestrator/audit.py": 0.89,
           "orchestrator/decision_pipeline.py": 0.79,
@@ -1266,6 +1266,53 @@
           "context_engine/repository.py": 0.91
         },
         "back_compat_preserved_for": "takehome adapter (AgentOrchestrator ABC has no tenant_id on approve/reject); existing /actions and /approvals HTTP tests unchanged"
+      }
+    },
+    {
+      "date": "2026-05-24",
+      "day": 21,
+      "phase": 4,
+      "component": "both",
+      "feature": "race_condition_hardening_test_suite",
+      "feature_shipped": true,
+      "llm_mode": "mock",
+      "tests_added_today": 10,
+      "tests_passing": 543,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset; PG-integration tests gated",
+      "takehome_score": null,
+      "notes": "10-test integration suite in tests/integration/test_race_conditions.py exercises every concurrent surface on PennyCore's hot paths. Nine of ten races were already safe by construction (Phase-2 RLock + unique-tuple dedup discipline). The tenth — context_engine/linking.py check-then-create TOCTOU — was a real bug invisible to vanilla threaded tests because the GIL serializes the tight find-then-create window. Surfaced via _wrap_with_lookup_latency (10ms sleep injected into find_customer_by_identity, simulating Postgres-adapter round-trip): without the production patch, 7 of 8 concurrent callers raise IdentityCollision. Patched resolve_customer to catch IdentityCollision and re-walk the identity priority list, returning the winner's customer as a regular match. Catch-and-retry pattern (Kleppmann DDIA §7.2.3) preserves happy-path performance — only race losers pay the extra lookup. Stash-and-rerun confirms tests 1-2 fail without the patch, proving the regression guard exercises the right path.",
+      "race_condition_hardening": {
+        "test_classes": 7,
+        "tests_total": 10,
+        "tests_passed_first_run": 8,
+        "tests_failed_pre_patch": 2,
+        "tests_failed_pre_patch_names": [
+          "test_01_concurrent_same_email_one_customer_no_exception",
+          "test_02_concurrent_same_external_id_one_customer"
+        ],
+        "production_patches": {
+          "context_engine/linking.py": "resolve_customer step 3 catches IdentityCollision from create_customer, re-walks identity priority list, returns winner's customer as regular match (customer_created=False). Pure-additive — no signature change, no caller change."
+        },
+        "races_already_safe": [
+          "InMemoryApprovalQueue.enqueue under N-thread contention (idempotent on action_id)",
+          "DecisionPipeline.handle_proposal under N-thread contention (dedup index keyed by tenant_id, event_id)",
+          "InMemoryAuditLog.write under N-thread contention across multiple tenants (monotonic ids, no skips)",
+          "ApprovalQueue approve-vs-reject (RLock + state-machine guard raises ApprovalStateError on the loser)",
+          "InMemoryCustomerRepository.add_identity collision detection (UNIQUE oracle preserved under contention)",
+          "InMemoryEventRepository.upsert_event throughput under N=64 distinct events (no lost writes)"
+        ],
+        "concurrency_workers_max": 60,
+        "latency_injection_simulating_postgres_ms": 10,
+        "coverage_concurrency_modules": {
+          "context_engine/linking.py": 0.96,
+          "context_engine/customer_repository.py": 0.93,
+          "orchestrator/approval_queue.py": 0.9,
+          "orchestrator/audit.py": 0.92,
+          "orchestrator/decision_pipeline.py": 0.81
+        },
+        "back_compat_preserved": true,
+        "race_resolution_pattern": "catch-and-retry on UNIQUE-violation (Kleppmann DDIA §7.2.3); locks unchanged"
       }
     }
   ]

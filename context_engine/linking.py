@@ -274,11 +274,59 @@ def resolve_customer(
                 )
 
     # 3. No match — create a new customer with all available hints.
-    customer = customer_repo.create_customer(
-        tenant_id=tenant_id,
-        identities=[(h.kind, h.value) for h in hints],
-        display_name=extract_display_name(request.payload),
-    )
+    #
+    # Race-safe path (Day 21 hardening): the check-then-create pattern
+    # above has a TOCTOU window — two concurrent ingests for the SAME
+    # never-before-seen customer can BOTH miss step 2 and BOTH reach
+    # step 3. The first thread's `create_customer` wins; the second
+    # thread's `create_customer` collides on the
+    # `(tenant_id, identity_kind, identity_value)` UNIQUE oracle and
+    # raises `IdentityCollision`. With an in-memory repo + the GIL the
+    # window is tiny; with the Postgres adapter the find→create round
+    # trip opens the window to milliseconds, which Twilio-style retries
+    # WILL race through. We tolerate the lost race by re-running the
+    # identity match (which now succeeds thanks to the winner's write)
+    # and returning that as a regular match. The race becomes
+    # indistinguishable from a slightly-later replay.
+    try:
+        customer = customer_repo.create_customer(
+            tenant_id=tenant_id,
+            identities=[(h.kind, h.value) for h in hints],
+            display_name=extract_display_name(request.payload),
+        )
+    except IdentityCollision:
+        # The winner inserted at least one of OUR hints between our
+        # step-2 miss and the create attempt. Re-run the priority walk
+        # — exactly the same logic, now guaranteed to hit. The
+        # second-step lookup is the source of truth; if it STILL
+        # misses (very unlikely — only possible if the winner deleted
+        # the identity in between, which the repository's append-only
+        # nature forbids) we re-raise so the caller sees the real
+        # failure rather than a silent infinite loop.
+        for kind in LOOKUP_PRIORITY:
+            for hint in hints:
+                if hint.kind is not kind:
+                    continue
+                match = customer_repo.find_customer_by_identity(
+                    tenant_id=tenant_id,
+                    identity_kind=hint.kind,
+                    identity_value=hint.value,
+                )
+                if match is not None:
+                    added = _attach_new_identities(
+                        customer_id=match.id,
+                        tenant_id=tenant_id,
+                        hints=[h for h in hints if h is not hint],
+                        customer_repo=customer_repo,
+                    )
+                    return LinkingOutcome(
+                        customer_id=match.id,
+                        customer_created=False,
+                        matched_kind=hint.kind,
+                        matched_value=hint.value,
+                        identities_added=tuple(added),
+                    )
+        raise  # truly inconsistent — surface the failure
     return LinkingOutcome(
         customer_id=customer.id,
         customer_created=True,
