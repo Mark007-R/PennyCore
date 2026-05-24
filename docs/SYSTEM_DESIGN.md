@@ -287,7 +287,55 @@ Mechanism:
 - Fallback tests in `tests/adversarial/` simulate LLM 5xx, timeout, and
   schema-violating responses.
 
-### 5.6 Append-only takehome harness
+### 5.6 Race-condition safety (Day 21 hardening)
+
+> Under N-thread contention on any public surface, the system reaches
+> exactly one legal end state deterministically — no lost writes, no
+> duplicate side effects, no partial mutations.
+
+Mechanism (verified by 10 integration tests in
+`tests/integration/test_race_conditions.py`, Day 21):
+- Every in-memory adapter's critical section is wrapped in an `RLock`
+  (`InMemoryEventRepository`, `InMemoryCustomerRepository`,
+  `InMemoryActionStore`, `InMemoryApprovalQueue`, `InMemoryAuditLog`,
+  `DecisionPipeline`). The Postgres-backed adapters inherit the same
+  invariants from SQL-level UNIQUE constraints + serializable
+  isolation; the Postgres pipeline + queue land in Phase 6 (Day 29).
+- Dedup indices are keyed on the unique tuple, not on hashable input
+  alone: `(tenant_id, idempotency_key)` for events,
+  `(tenant_id, event_id)` for action proposals,
+  `(tenant_id, identity_kind, identity_value)` for customer
+  identities. The dedup tuple becomes the natural advisory-lock key
+  when the Postgres pipeline lands.
+- State-machine transitions forbid retro-decisioning: an
+  `ApprovalRule` that has left `pending` cannot return — race losers
+  receive `ApprovalStateError` rather than a silent no-op (visible
+  failure beats invisible drift). This is the same rule the external
+  scorecard scenario 3 (double-approve raises) depends on.
+- `linking.resolve_customer` uses **catch-and-retry on UNIQUE
+  violation** (Kleppmann DDIA §7.2.3) for the no-match → create-new
+  branch. Two concurrent threads can race the check-then-create
+  window; the constraint guarantees exactly one INSERT wins, and the
+  loser catches `IdentityCollision`, re-walks the identity priority
+  list against the now-updated index, and returns the winner's
+  customer as a regular match. This keeps the happy path lock-free
+  and only race losers pay the extra lookup. Verified pre-patch by
+  reverting `linking.py` and re-running tests 1-2: 7 of 8 callers
+  raise `IdentityCollision` with 10ms lookup latency injected.
+- The audit log assigns monotonic IDs under N=60 contention with no
+  skips and no duplicates (verified by test 8) — the lock wraps the
+  counter increment + append into one critical section.
+
+What's NOT here yet:
+- Postgres advisory locks. Deferred to Phase 6 (Day 29) when the
+  Postgres-backed pipeline + queue land. The Day-21 RLock + UNIQUE
+  oracle pattern transfers cleanly to advisory-lock + UNIQUE on the
+  Postgres adapter, so no Phase-4 migration is needed.
+- Cross-process race testing. The current suite is single-process
+  multi-threaded; Day 22's load test will probe the cross-process
+  case via locust + multiple worker processes.
+
+### 5.7 Append-only takehome harness
 
 > `takehome/context-engine/evaluate.py` and
 > `takehome/orchestrator/evaluate.py` are NEVER edited.
@@ -455,8 +503,19 @@ backstop that catches bugs in the contract.
 
 - **Embedding model** for semantic retrieval: `sentence-transformers/all-MiniLM-L6-v2` (cheap, 384-dim, runs on CPU) vs. `text-embedding-3-small` (better quality, costs $). Decided Day 14 when Strategy 3 lands; default to MiniLM unless quality lags.
 - **Approval-queue concurrency**: optimistic-lock via row version vs.
-  Postgres advisory lock vs. SELECT FOR UPDATE. Decided Day 21 when
-  race-condition tests land.
+  Postgres advisory lock vs. SELECT FOR UPDATE. **Resolved Day 21:**
+  the in-memory `ApprovalQueue` uses `RLock` + state-machine guard
+  (row leaves `pending` exactly once; second writer raises
+  `ApprovalStateError`); verified by 3 race tests in
+  `tests/integration/test_race_conditions.py` (approve-vs-reject,
+  5-approver pile-on, 5-rejecter pile-on). The Postgres-backed queue
+  (Phase 6 / Day 29) will use the existing `row_version` column for
+  optimistic locking — `UPDATE ... WHERE row_version = ?` returns
+  affected-rows=0 on race losers, which the application maps to
+  `ApprovalStateError`. Advisory locks and `SELECT FOR UPDATE` were
+  rejected: they serialize access on rows that don't have a real
+  contention pattern (per-approver clicks are rare, and optimistic
+  locking is cheaper when contention is low).
 - **Audit-log retention**: append-only forever vs. partitioned-by-month
   with archive policy. Decided Day 30 during OpenTelemetry work; for the
   demo, append-only forever is fine.
