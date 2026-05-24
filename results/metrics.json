@@ -1341,6 +1341,23 @@
         "race_resolution_pattern": "catch-and-retry on UNIQUE-violation (Kleppmann DDIA §7.2.3); locks unchanged",
         "regression_path_verification": "tests 1-2 verified to exercise the regression path via `git stash` of context_engine/linking.py — without the patch, tests 1-2 fail with 7-of-8 callers raising IdentityCollision; restoring the patch returns the green. With the patch in place, all 10 tests pass on first run.",
         "coverage_concurrency_modules_measurement": "pytest --cov, end-of-day, post-patch; reports percent + (statements, missing)"
+      },
+      "end_of_day_stack_boot": {
+        "command": "docker compose up -d --wait",
+        "containers_healthy": [
+          "pennycore-postgres",
+          "pennycore-redis",
+          "pennycore-context-engine",
+          "pennycore-orchestrator"
+        ],
+        "context_engine_datastore_mode": "postgres",
+        "context_engine_bus_mode": "redis",
+        "orchestrator_listener_mode": "redis",
+        "readyz_probes": {
+          "context_engine_8001": "ready (postgres probed)",
+          "orchestrator_8002": "ready (postgres ok, redis ok)"
+        },
+        "torn_down_after_verification": true
       }
     }
   ]
