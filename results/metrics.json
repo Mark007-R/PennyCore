@@ -1482,6 +1482,36 @@
             "httpx \u2192 live Uvicorn (--base-url)"
           ]
         }
+      },
+      "end_of_day_stack_boot": {
+        "command": "docker compose up -d --wait",
+        "containers_healthy": [
+          "pennycore-postgres",
+          "pennycore-redis",
+          "pennycore-context-engine",
+          "pennycore-orchestrator"
+        ],
+        "context_engine_datastore_mode": "postgres",
+        "context_engine_bus_mode": "redis (implicit; orchestrator reports redis listener)",
+        "orchestrator_listener_mode": "redis",
+        "readyz_probes": {
+          "context_engine_8001": {
+            "status": "ready",
+            "datastores_probed": true,
+            "datastore_mode": "postgres"
+          },
+          "orchestrator_8002": {
+            "status": "ready",
+            "datastores_probed": true,
+            "probed": {
+              "postgres": "ok",
+              "redis": "ok"
+            },
+            "listener_mode": "redis"
+          }
+        },
+        "torn_down_after_verification": true,
+        "verification_note": "Day 22 touched only benchmarks/ + tests/ \u2014 no service or schema changes; this boot reproves the Day-21 green stack remains green."
       }
     }
   ]
