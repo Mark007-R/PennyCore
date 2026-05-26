@@ -1521,15 +1521,17 @@
       "component": "context_engine+orchestrator",
       "feature": "failure_modes_phase4_wrap",
       "feature_shipped": true,
-      "tests_passing": 636,
-      "tests_added_today": 85,
+      "tests_passing": 653,
+      "tests_added_today": 102,
       "tests_skipped": 10,
       "tests_skipped_reason": "DATABASE_URL unset; PG-integration tests gated",
       "coverage_touched_modules_pct": {
-        "context_engine.quarantine": 100,
-        "context_engine.timeouts": 95,
-        "context_engine.safety.prompt_injection": 100,
-        "orchestrator.planner": 99
+        "context_engine.quarantine": 95,
+        "context_engine.timeouts": 100,
+        "context_engine.safety.prompt_injection": 98,
+        "context_engine.slow_call_queue": 99,
+        "orchestrator.planner": 98,
+        "measured_via": "pytest --cov, end-of-day after backfill"
       },
       "failure_modes_shipped": {
         "llm_api_down": {
@@ -1539,10 +1541,10 @@
           "day23_action": "fresh test coverage + documentation lock-in"
         },
         "postgres_slow": {
-          "mitigation": "context_engine.timeouts.with_deadline returns fallback with degraded=True",
-          "tests": 5,
+          "mitigation": "context_engine.timeouts.with_deadline + context_engine.slow_call_queue.with_deadline_and_defer (timeout + defer-queue, full SKILL line item)",
+          "tests": 22,
           "origin_day": 23,
-          "day23_action": "new module"
+          "day23_action": "new modules + GET /deferred/pending operator endpoint"
         },
         "malformed_event": {
           "mitigation": "per-tenant quarantine ring + RequestValidationError handler + GET /quarantine/recent",
@@ -1585,7 +1587,24 @@
           "declarative-YAML policy (Day 18)"
         ]
       },
-      "notes": "Phase 4 wrap day. LLM mode mock; benchmark numbers from Day 22 still canonical. PR phase/4-hardening squash-merged on this commit."
+      "notes": "Phase 4 wrap day. LLM mode mock; benchmark numbers from Day 22 still canonical. PR phase/4-hardening squash-merged on this commit.",
+      "system_boot": {
+        "docker_compose_up": "verified",
+        "containers_healthy": [
+          "pennycore-postgres",
+          "pennycore-redis",
+          "pennycore-context-engine",
+          "pennycore-orchestrator"
+        ],
+        "context_engine_readyz": "postgres-mode ready",
+        "orchestrator_readyz": "postgres+redis probed ready",
+        "new_endpoints_live": [
+          "/quarantine/recent",
+          "/deferred/pending"
+        ],
+        "verified_via": "docker compose up -d --build --wait + curl /readyz on 8001/8002"
+      },
+      "backfill_note": "Day-23 main commit shipped timeout-only (with_deadline). Backfill commit adds the queue half (SlowCallQueue + with_deadline_and_defer + GET /deferred/pending) so the full SKILL Day-23 line item Postgres slow -> timeout + queue is satisfied. Coverage numbers reasoned in main commit replaced with pytest --cov measured numbers. Stack-boot verification (docker compose up --wait) confirmed all 4 containers Healthy + both new operator endpoints live."
     }
   ]
 }

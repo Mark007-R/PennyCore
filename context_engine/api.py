@@ -45,6 +45,10 @@ from context_engine.quarantine import (
     QuarantineReason,
     get_quarantine,
 )
+from context_engine.slow_call_queue import (
+    SlowCallQueue,
+    get_defer_queue,
+)
 from context_engine.repository import EventRepository, InMemoryEventRepository
 from context_engine.safety import sanitize_for_prompt
 from context_engine.safety.prompt_injection import has_injection_markers
@@ -249,6 +253,48 @@ def root() -> dict[str, Any]:
 @app.get("/healthz", tags=["health"])
 def healthz() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/deferred/pending", tags=["operations"])
+def deferred_pending(
+    tenant_id: str,
+    limit: int = 100,
+    queue: SlowCallQueue = Depends(get_defer_queue),
+) -> dict[str, Any]:
+    """Operator visibility for slow-call defer queue (Day 23 backfill).
+
+    Pairs with `/quarantine/recent` — the quarantine view shows
+    input-validation failures; this view shows downstream-slowness
+    deferrals. Tenant-scoped (no global view), bounded limit.
+    """
+    if not tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="tenant_id query parameter required",
+        )
+    if limit < 1 or limit > 500:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="limit must be between 1 and 500",
+        )
+    entries = queue.pending(tenant_id, limit=limit)
+    return {
+        "tenant_id": tenant_id,
+        "count": len(entries),
+        "entries": [
+            {
+                "id": e.id,
+                "operation": e.operation,
+                "reason": e.reason.value,
+                "detail": e.detail,
+                "deferred_at": e.deferred_at.isoformat(),
+                "elapsed_ms": e.elapsed_ms,
+                "payload": e.payload,
+                "context": e.context,
+            }
+            for e in entries
+        ],
+    }
 
 
 @app.get("/quarantine/recent", tags=["operations"])
