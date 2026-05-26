@@ -1194,6 +1194,398 @@
           "Both Phase-3 datasets carry forward unchanged"
         ]
       }
+    },
+    {
+      "date": "2026-05-22",
+      "day": 19,
+      "phase": 4,
+      "component": "both",
+      "feature": "idempotency_hardening_test_suite",
+      "feature_shipped": true,
+      "llm_mode": "mock",
+      "tests_added_today": 20,
+      "tests_passing": 518,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset; PG-integration tests gated",
+      "takehome_score": null,
+      "notes": "Phase 4 opens. 20-test integration suite in tests/integration/test_idempotency.py covers every replay surface: context-engine ingestion (pure+HTTP), DecisionPipeline (tenant_id, event_id) dedup, approval-queue double-decision guards, audit-chain immutability under replay, concurrent-thread races. All 20 pass on first run; no production code patch required. Phase-2 dedup oracles held under the Phase-4 stress harness.",
+      "idempotency_hardening": {
+        "test_classes": 5,
+        "tests_total": 20,
+        "tests_passed_first_run": 20,
+        "production_patches_required": 0,
+        "coverage_idempotency_modules": {
+          "context_engine/ingestion.py": 1.0,
+          "context_engine/repository.py": 0.88,
+          "orchestrator/decision_pipeline.py": 0.74,
+          "orchestrator/approval_queue.py": 0.87,
+          "orchestrator/audit.py": 0.82
+        },
+        "concurrency_workers_max": 10,
+        "replay_storm_iterations": 1000
+      }
+    },
+    {
+      "date": "2026-05-23",
+      "day": 20,
+      "phase": 4,
+      "component": "orchestrator",
+      "feature": "tenant_isolation_hardening_test_suite",
+      "feature_shipped": true,
+      "llm_mode": "mock",
+      "tests_added_today": 15,
+      "tests_passing": 533,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset; PG-integration tests gated",
+      "takehome_score": null,
+      "notes": "15-test multi-tenant isolation suite + minimal production patches for two real HTTP leak surfaces. GET /actions/{id} and POST /approvals/{id}/{approve,reject} now accept an optional tenant_id query parameter that 404s cross-tenant attempts (same-shape error \u2014 no existence leak per OWASP API1). audit.entries_for_action/event gain optional tenant_id= filter; pipeline.get_action/approve_action/reject_action gain optional expected_tenant_id= kwarg. Back-compat preserved for the takehome adapter (uses no tenant_id; single-tenant per scenario). 533 passed, 0 failed, zero regression on top of Day 19 518-test baseline.",
+      "tenant_isolation_hardening": {
+        "test_classes": 6,
+        "tests_total": 15,
+        "tests_passed_first_run": 15,
+        "surfaces_covered": [
+          "EventRepository",
+          "CustomerRepository_and_linker",
+          "InMemoryActionStore",
+          "ApprovalQueue",
+          "AuditLog",
+          "orchestrator_HTTP_actions_and_approvals"
+        ],
+        "production_patches": {
+          "orchestrator/audit.py": "optional tenant_id= filter on entries_for_action, entries_for_event",
+          "orchestrator/decision_pipeline.py": "optional expected_tenant_id= kwarg on get_action, approve_action, reject_action",
+          "orchestrator/api.py": "optional tenant_id query parameter on /actions/{id}, /approvals/{id}/approve, /approvals/{id}/reject"
+        },
+        "cross_tenant_response_code": 404,
+        "cross_tenant_response_rationale": "OWASP API1:2023 \u2014 Broken Object Level Authorization \u2014 404 reveals nothing about cross-tenant existence",
+        "coverage_isolation_modules": {
+          "orchestrator/audit.py": 0.89,
+          "orchestrator/decision_pipeline.py": 0.79,
+          "orchestrator/api.py_actions_and_approvals": 0.88,
+          "context_engine/customer_repository.py": 0.92,
+          "context_engine/repository.py": 0.91
+        },
+        "back_compat_preserved_for": "takehome adapter (AgentOrchestrator ABC has no tenant_id on approve/reject); existing /actions and /approvals HTTP tests unchanged"
+      }
+    },
+    {
+      "date": "2026-05-24",
+      "day": 21,
+      "phase": 4,
+      "component": "both",
+      "feature": "race_condition_hardening_test_suite",
+      "feature_shipped": true,
+      "llm_mode": "mock",
+      "tests_added_today": 10,
+      "tests_passing": 543,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset; PG-integration tests gated",
+      "takehome_score": null,
+      "notes": "10-test integration suite in tests/integration/test_race_conditions.py exercises every concurrent surface on PennyCore's hot paths. Nine of ten races were already safe by construction (Phase-2 RLock + unique-tuple dedup discipline). The tenth \u2014 context_engine/linking.py check-then-create TOCTOU \u2014 was a real bug invisible to vanilla threaded tests because the GIL serializes the tight find-then-create window. Surfaced via _wrap_with_lookup_latency (10ms sleep injected into find_customer_by_identity, simulating Postgres-adapter round-trip): without the production patch, 7 of 8 concurrent callers raise IdentityCollision. Patched resolve_customer to catch IdentityCollision and re-walk the identity priority list, returning the winner's customer as a regular match. Catch-and-retry pattern (Kleppmann DDIA \u00a77.2.3) preserves happy-path performance \u2014 only race losers pay the extra lookup. Stash-and-rerun confirms tests 1-2 fail without the patch, proving the regression guard exercises the right path.",
+      "race_condition_hardening": {
+        "test_classes": 7,
+        "tests_total": 10,
+        "tests_passed_first_run": 10,
+        "production_patches": {
+          "context_engine/linking.py": "resolve_customer step 3 catches IdentityCollision from create_customer, re-walks identity priority list, returns winner's customer as regular match (customer_created=False). Pure-additive \u2014 no signature change, no caller change."
+        },
+        "races_already_safe": [
+          "InMemoryApprovalQueue.enqueue under N-thread contention (idempotent on action_id)",
+          "DecisionPipeline.handle_proposal under N-thread contention (dedup index keyed by tenant_id, event_id)",
+          "InMemoryAuditLog.write under N-thread contention across multiple tenants (monotonic ids, no skips)",
+          "ApprovalQueue approve-vs-reject (RLock + state-machine guard raises ApprovalStateError on the loser)",
+          "InMemoryCustomerRepository.add_identity collision detection (UNIQUE oracle preserved under contention)",
+          "InMemoryEventRepository.upsert_event throughput under N=64 distinct events (no lost writes)"
+        ],
+        "concurrency_workers_max": 60,
+        "latency_injection_simulating_postgres_ms": 10,
+        "coverage_concurrency_modules": {
+          "context_engine/linking.py": {
+            "pct": 0.99,
+            "stmts": 99,
+            "miss": 1,
+            "miss_note": "truly-inconsistent fallback raise branch, unreachable in tests"
+          },
+          "context_engine/customer_repository.py": {
+            "pct": 0.95,
+            "stmts": 79,
+            "miss": 4,
+            "miss_note": "test-only clear() helper"
+          },
+          "context_engine/repository.py": {
+            "pct": 0.92,
+            "stmts": 40,
+            "miss": 3,
+            "miss_note": "test-only clear() helper"
+          },
+          "orchestrator/approval_queue.py": {
+            "pct": 0.97,
+            "stmts": 67,
+            "miss": 2,
+            "miss_note": "defensive log-on-missing branch"
+          },
+          "orchestrator/audit.py": {
+            "pct": 1.0,
+            "stmts": 50,
+            "miss": 0,
+            "miss_note": "fully covered"
+          },
+          "orchestrator/decision_pipeline.py": {
+            "pct": 0.99,
+            "stmts": 154,
+            "miss": 2,
+            "miss_note": "test-only clear() helper"
+          }
+        },
+        "back_compat_preserved": true,
+        "race_resolution_pattern": "catch-and-retry on UNIQUE-violation (Kleppmann DDIA \u00a77.2.3); locks unchanged",
+        "regression_path_verification": "tests 1-2 verified to exercise the regression path via `git stash` of context_engine/linking.py \u2014 without the patch, tests 1-2 fail with 7-of-8 callers raising IdentityCollision; restoring the patch returns the green. With the patch in place, all 10 tests pass on first run.",
+        "coverage_concurrency_modules_measurement": "pytest --cov, end-of-day, post-patch; reports percent + (statements, missing)"
+      },
+      "end_of_day_stack_boot": {
+        "command": "docker compose up -d --wait",
+        "containers_healthy": [
+          "pennycore-postgres",
+          "pennycore-redis",
+          "pennycore-context-engine",
+          "pennycore-orchestrator"
+        ],
+        "context_engine_datastore_mode": "postgres",
+        "context_engine_bus_mode": "redis",
+        "orchestrator_listener_mode": "redis",
+        "readyz_probes": {
+          "context_engine_8001": "ready (postgres probed)",
+          "orchestrator_8002": "ready (postgres ok, redis ok)"
+        },
+        "torn_down_after_verification": true
+      }
+    },
+    {
+      "date": "2026-05-25",
+      "day": 22,
+      "phase": 4,
+      "component": "context_engine",
+      "feature": "load_test_harness_and_bottleneck_profile",
+      "feature_shipped": true,
+      "llm_mode": "mock",
+      "tests_added_today": 8,
+      "tests_passing": 551,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset; PG-integration tests gated",
+      "takehome_score": null,
+      "notes": "Load test harness (locust file + stdlib twin) ships. SKILL-prescribed workload (100 concurrent customers across 5 tenants, mock LLM, in-memory repo) runs cleanly: 5954 requests over 30.45s, 100% success, p50 313ms, p95 688ms, p99 853ms. Per-tenant variance under 1% (no tenant skew under load \u2014 validates Day 20 isolation work). Scaling sweep at 1/10/25/50/100 users locates the knee between 25 and 50 concurrent users; throughput peaks at 258 rps and DECREASES to 186 rps at 100 users (classic Little's-Law thrashing). Sequential cProfile of the per-request hot path identifies the bottleneck: 4.08 ms/req in starlette.testclient.handle_request (anyio sync\u2192async bridge), with PennyCore handler code (validation \u2192 linker \u2192 repo upsert \u2192 bus publish) sub-millisecond. The bottleneck is the single-process / single-event-loop ceiling \u2014 characteristic of every single-Uvicorn-worker FastAPI app, not specific to PennyCore. Day 29 production dockerization will fix this with multi-worker Uvicorn topology (one worker per 25-50 concurrent customers expected).",
+      "load_test": {
+        "workload": {
+          "transport": "fastapi.testclient (in-process)",
+          "datastore": "memory",
+          "bus": "in-memory",
+          "llm": "mock",
+          "concurrent_users": 100,
+          "tenants": 5,
+          "duration_s": 30.45,
+          "seed": 42,
+          "event_type_weights": {
+            "message_received": 0.8,
+            "document_uploaded": 0.15,
+            "status_changed": 0.05
+          },
+          "channel_rotation": [
+            "chat",
+            "email",
+            "sms",
+            "voice"
+          ],
+          "think_time_s_min_max": [
+            0.05,
+            0.25
+          ]
+        },
+        "canonical_run_30s_100users": {
+          "total_requests": 5954,
+          "throughput_rps": 195.5,
+          "success_rate": 1.0,
+          "p50_ms": 313.0,
+          "p95_ms": 688.3,
+          "p99_ms": 852.8,
+          "max_ms": 1119.9,
+          "per_tenant_p50_variance_pct": 0.9,
+          "per_tenant_p95_variance_pct": 2.9
+        },
+        "scaling_sweep_5s_per_step": [
+          {
+            "users": 1,
+            "requests": 34,
+            "rps": 6.7,
+            "p50_ms": 6.4,
+            "p95_ms": 9.2,
+            "p99_ms": 13.1
+          },
+          {
+            "users": 10,
+            "requests": 326,
+            "rps": 63.0,
+            "p50_ms": 6.3,
+            "p95_ms": 13.4,
+            "p99_ms": 25.0
+          },
+          {
+            "users": 25,
+            "requests": 787,
+            "rps": 150.8,
+            "p50_ms": 6.5,
+            "p95_ms": 19.6,
+            "p99_ms": 42.8
+          },
+          {
+            "users": 50,
+            "requests": 1344,
+            "rps": 257.9,
+            "p50_ms": 28.2,
+            "p95_ms": 81.7,
+            "p99_ms": 125.0
+          },
+          {
+            "users": 100,
+            "requests": 1036,
+            "rps": 185.9,
+            "p50_ms": 302.4,
+            "p95_ms": 576.0,
+            "p99_ms": 701.4
+          }
+        ],
+        "knee_concurrency_users": "25-50",
+        "throughput_ceiling_rps": 258,
+        "bottleneck": {
+          "location": "starlette.testclient anyio sync\u2192async bridge + Python GIL",
+          "evidence": "sequential cProfile: 4.08 ms/req in handle_request; PennyCore handler code below noise floor",
+          "fix_path": "Day 29 production dockerization with uvicorn --workers N (one worker per 25-50 concurrent customers)",
+          "is_pennycore_code": false
+        },
+        "correctness_under_load": {
+          "success_rate": 1.0,
+          "tenant_skew_detected": false,
+          "idempotency_collisions_reported": 0,
+          "cross_tenant_leaks": 0
+        },
+        "artifacts": {
+          "canonical_json": "results/phase4_load_results.json",
+          "scaling_json": "results/phase4_load_scaling.json",
+          "scaling_chart_png": "results/phase4_load_scaling.png"
+        },
+        "harness": {
+          "locust_file": "benchmarks/load_test.py",
+          "stdlib_twin": "benchmarks/local_load_runner.py",
+          "harness_tests": "tests/integration/test_load_runner.py (8 tests)",
+          "locust_install_required": false,
+          "transports_supported": [
+            "fastapi.testclient (default)",
+            "httpx \u2192 live Uvicorn (--base-url)"
+          ]
+        }
+      },
+      "end_of_day_stack_boot": {
+        "command": "docker compose up -d --wait",
+        "containers_healthy": [
+          "pennycore-postgres",
+          "pennycore-redis",
+          "pennycore-context-engine",
+          "pennycore-orchestrator"
+        ],
+        "context_engine_datastore_mode": "postgres",
+        "context_engine_bus_mode": "redis (implicit; orchestrator reports redis listener)",
+        "orchestrator_listener_mode": "redis",
+        "readyz_probes": {
+          "context_engine_8001": {
+            "status": "ready",
+            "datastores_probed": true,
+            "datastore_mode": "postgres"
+          },
+          "orchestrator_8002": {
+            "status": "ready",
+            "datastores_probed": true,
+            "probed": {
+              "postgres": "ok",
+              "redis": "ok"
+            },
+            "listener_mode": "redis"
+          }
+        },
+        "torn_down_after_verification": true,
+        "verification_note": "Day 22 touched only benchmarks/ + tests/ \u2014 no service or schema changes; this boot reproves the Day-21 green stack remains green."
+      }
+    },
+    {
+      "day": 23,
+      "phase": 4,
+      "date": "2026-05-26",
+      "component": "context_engine+orchestrator",
+      "feature": "failure_modes_phase4_wrap",
+      "feature_shipped": true,
+      "tests_passing": 636,
+      "tests_added_today": 85,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset; PG-integration tests gated",
+      "coverage_touched_modules_pct": {
+        "context_engine.quarantine": 100,
+        "context_engine.timeouts": 95,
+        "context_engine.safety.prompt_injection": 100,
+        "orchestrator.planner": 99
+      },
+      "failure_modes_shipped": {
+        "llm_api_down": {
+          "mitigation": "planner falls back to rule table with ProposedBy.FALLBACK",
+          "tests": 4,
+          "origin_day": 9,
+          "day23_action": "fresh test coverage + documentation lock-in"
+        },
+        "postgres_slow": {
+          "mitigation": "context_engine.timeouts.with_deadline returns fallback with degraded=True",
+          "tests": 5,
+          "origin_day": 23,
+          "day23_action": "new module"
+        },
+        "malformed_event": {
+          "mitigation": "per-tenant quarantine ring + RequestValidationError handler + GET /quarantine/recent",
+          "tests": 14,
+          "origin_day": 23,
+          "day23_action": "new module + API surface"
+        },
+        "prompt_injection": {
+          "mitigation": "6-family regex sanitiser + BEGIN/END_UNTRUSTED wrapping + audit flag-stamp + ingestion-time flag-and-ingest",
+          "tests": 62,
+          "origin_day": 23,
+          "day23_action": "new module + planner integration + adversarial sweep"
+        }
+      },
+      "adversarial_corpus": {
+        "known_attacks_count": 32,
+        "clean_messages_count": 13,
+        "attack_flag_rate_threshold": 0.9,
+        "attack_flag_rate_actual": 1.0,
+        "false_positive_rate_threshold": 0.1,
+        "false_positive_rate_actual": 0.0
+      },
+      "phase4_wrap": {
+        "phase_days": "19-23",
+        "phase_test_delta": "491 -> 636 (+145 tests)",
+        "phase_modules_added": [
+          "context_engine.quarantine",
+          "context_engine.timeouts",
+          "context_engine.safety"
+        ],
+        "phase_invariants_verified": [
+          "idempotency",
+          "tenant_isolation",
+          "race_conditions",
+          "load_capacity",
+          "failure_modes"
+        ],
+        "champion_carry_forward": [
+          "hybrid retrieval (Day 18)",
+          "declarative-YAML policy (Day 18)"
+        ]
+      },
+      "notes": "Phase 4 wrap day. LLM mode mock; benchmark numbers from Day 22 still canonical. PR phase/4-hardening squash-merged on this commit."
     }
   ]
 }

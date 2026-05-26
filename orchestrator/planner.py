@@ -68,6 +68,7 @@ from threading import RLock
 from typing import Any, Callable
 
 from context_engine.llm import LLMClient, get_client
+from context_engine.safety import sanitize_for_prompt
 from contracts import ActionProposal, ActionType, ProposedBy
 
 _LOG = logging.getLogger(__name__)
@@ -194,12 +195,20 @@ def propose_action(
 
     client = client if client is not None else get_client()
 
+    # Day 23 — sanitise the customer-derived brief before it touches the
+    # LLM. Even in mock mode we run the sanitiser so the audit log
+    # records the flag set; the fallback path below picks the
+    # `_injection_flags` payload up from `sanitised`.
+    sanitised = sanitize_for_prompt(request.brief_text or "")
+
     if client.name == "mock":
-        return _fallback_proposal(request, proposal_id_factory)
+        return _fallback_proposal(
+            request, proposal_id_factory, injection_flags=sanitised.flags
+        )
 
     try:
         raw = client.complete(
-            prompt=_format_user_prompt(request),
+            prompt=_format_user_prompt(request, sanitised_brief=sanitised.sanitized),
             system=_PLANNER_SYSTEM_PROMPT,
             max_tokens=256,
             temperature=0.0,
@@ -210,16 +219,27 @@ def propose_action(
             type(exc).__name__,
             exc,
         )
-        return _fallback_proposal(request, proposal_id_factory)
+        return _fallback_proposal(
+            request, proposal_id_factory, injection_flags=sanitised.flags
+        )
 
     parsed = _parse_llm_response(raw)
     if parsed is None:
         _LOG.warning(
             "planner LLM produced unparseable response; falling back to rule table"
         )
-        return _fallback_proposal(request, proposal_id_factory)
+        return _fallback_proposal(
+            request, proposal_id_factory, injection_flags=sanitised.flags
+        )
 
     action_type, payload = parsed
+    if sanitised.flags:
+        # Stamp the flags so the Day-10 audit log surfaces them on
+        # every proposal that came from a sanitised brief.
+        payload = {
+            **payload,
+            "_injection_flags": [f.value for f in sanitised.flags],
+        }
     return ActionProposal(
         id=proposal_id_factory(),
         tenant_id=tenant_id,
@@ -236,14 +256,26 @@ def propose_action(
 # ----------------------------------------------------------------------------
 
 
-def _format_user_prompt(request: PlanRequest) -> str:
+def _format_user_prompt(
+    request: PlanRequest, *, sanitised_brief: str | None = None
+) -> str:
     """Render the envelope + brief as the user-side prompt. The shape is
     deliberately stable — Phase 3 prompt-comparison runs will diff
-    against this baseline."""
+    against this baseline.
+
+    `sanitised_brief` (Day 23): when supplied, replaces `request.brief_text`
+    in the prompt body. The sanitiser wraps the brief in
+    `BEGIN_UNTRUSTED` / `END_UNTRUSTED` markers; the system prompt
+    instructs the model to treat that section as data. Callers that
+    don't pass `sanitised_brief` get the raw brief — useful for tests
+    that exercise prompt formatting in isolation."""
     env = request.envelope
+    brief_body = (
+        sanitised_brief if sanitised_brief is not None else request.brief_text
+    )
     brief_block = (
-        f"Customer brief:\n{request.brief_text}\n"
-        if request.brief_text
+        f"Customer brief:\n{brief_body}\n"
+        if brief_body
         else "Customer brief: (no brief available — customer not yet linked or brief lookup failed)\n"
     )
     return (
@@ -316,6 +348,8 @@ def _parse_llm_response(raw: str) -> tuple[ActionType, dict[str, Any]] | None:
 def _fallback_proposal(
     request: PlanRequest,
     proposal_id_factory: Callable[[], str],
+    *,
+    injection_flags: tuple = (),
 ) -> ActionProposal:
     """Build an `ActionProposal` from the rule table.
 
@@ -323,6 +357,12 @@ def _fallback_proposal(
     carries `_planner_reasoning` explaining the rule that fired, so the
     Day-10 audit log can surface the rationale identically to an
     LLM-generated proposal.
+
+    `injection_flags` (Day 23): when the upstream sanitiser detected
+    prompt-injection markers in the brief, the fallback proposal
+    records them in `payload["_injection_flags"]` so compliance can
+    see the trigger even though no LLM call was made (mock mode, LLM
+    down, or post-sanitisation rejection).
     """
     envelope = request.envelope
     event_type = envelope.get("event_type", "")
@@ -334,6 +374,12 @@ def _fallback_proposal(
         else f"rule-table default (unknown event_type={event_type!r}, escalating)"
     )
 
+    payload: dict[str, Any] = {"_planner_reasoning": reason}
+    if injection_flags:
+        payload["_injection_flags"] = [
+            f.value if hasattr(f, "value") else str(f) for f in injection_flags
+        ]
+
     return ActionProposal(
         id=proposal_id_factory(),
         tenant_id=envelope["tenant_id"],
@@ -341,7 +387,7 @@ def _fallback_proposal(
         customer_id=envelope.get("customer_id"),
         action_type=action_type,
         proposed_by=ProposedBy.FALLBACK,
-        payload={"_planner_reasoning": reason},
+        payload=payload,
     )
 
 

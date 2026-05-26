@@ -12,13 +12,44 @@ scorecard at any time.
 
 ## Status
 
-**Day 19 of 35** — Phase 4 (Hardening, Days 19-23) **in progress**.
-Phases 1-3 merged to `main`. Day 19 shipped the 20-test idempotency
-hardening suite (`tests/integration/test_idempotency.py`); Days 20-23
-cover multi-tenant isolation, race conditions, load testing, and
-graceful-degradation failure modes.
+**Day 21 of 35** — mid-Phase 4 (Hardening, Days 19-23). Phases 1-3
+merged to `main`; Phase 4 PR is open against `phase/4-hardening` and
+accumulating daily commits. Test suite: **543 passed, 10 skipped**
+(skips are Postgres-gated and run with `DATABASE_URL` set).
 
-Phase-3 champions (full numbers in
+**Phase 4 progress (Days 19-21 shipped):**
+
+- **Day 19 — Idempotency hardening.** 20-test integration suite
+  (`tests/integration/test_idempotency.py`) covering every replay
+  surface: context-engine ingestion (pure + HTTP),
+  `DecisionPipeline` `(tenant_id, event_id)` dedup, approval-queue
+  double-decision guards, audit-chain immutability under replay,
+  concurrent-thread races. All 20 passed first-run with zero
+  production patches — the Phase-2 dedup oracles held under stress.
+- **Day 20 — Multi-tenant isolation hardening.** 15-test suite
+  (`tests/integration/test_tenant_isolation.py`) across 6 surfaces
+  (events, customers, action store, approval queue, audit, HTTP).
+  Found and closed two real HTTP leak surfaces: `GET /actions/{id}`
+  and `POST /approvals/{id}/{approve,reject}` now accept an optional
+  `tenant_id` query parameter that 404s cross-tenant attempts
+  (same-shape error, no existence leak per OWASP API1:2023). Audit
+  log + pipeline gain optional `tenant_id=` / `expected_tenant_id=`
+  kwargs. Back-compat preserved for the takehome adapter.
+- **Day 21 — Race-condition hardening.** 10-test suite
+  (`tests/integration/test_race_conditions.py`) across 7 concurrent
+  surfaces. Nine of ten races were already safe by Phase-2
+  construction (RLock + unique-tuple dedup discipline). The tenth —
+  `context_engine.linking.resolve_customer` check-then-create TOCTOU
+  — was a real bug invisible to vanilla threaded tests because the
+  GIL serialized the tight find→create window. Surfaced via 10ms
+  latency injection (simulating Postgres-adapter round-trip): 7 of
+  8 concurrent callers raised `IdentityCollision` pre-patch.
+  Patched to catch-and-retry on UNIQUE violation (Kleppmann DDIA
+  §7.2.3 pattern). Measured coverage on touched modules: linker 99%,
+  customer_repository 95%, repository 92%, approval_queue 97%,
+  audit 100%, decision_pipeline 99%.
+
+**Phase 3 champions** (full numbers in
 `results/phase3_day18_consolidated.json`, full discussion in
 [docs/POLICIES.md](docs/POLICIES.md)):
 
@@ -37,9 +68,6 @@ total inputs. Takehome scorecard: context-engine 5/5 non-LLM
 (scenario 6 needs the `openai` SDK in the takehome venv — adapter
 otherwise passes), orchestrator **6/6**.
 
-Test suite: **518 passing**, 10 Postgres-integration tests gated on
-`DATABASE_URL`.
-
 ## Layout
 
 - `context_engine/` — memory librarian (event ingestion, cross-channel
@@ -55,7 +83,7 @@ Test suite: **518 passing**, 10 Postgres-integration tests gated on
   - `benchmarks/data/orchestrator/` — 200-tuple orchestrator dataset
     (Day 16)
 - `migrations/` — versioned SQL DDL
-- `tests/` — pytest (unit, integration, adversarial); 518 tests
+- `tests/` — pytest (unit, integration, adversarial); 543 passing
 - `results/` — metrics journal, experiment log, comparison charts +
   takehome scorecard
 - `notebooks/` — Phase-3 / Phase-5 analysis notebooks
