@@ -1513,6 +1513,79 @@
         "torn_down_after_verification": true,
         "verification_note": "Day 22 touched only benchmarks/ + tests/ \u2014 no service or schema changes; this boot reproves the Day-21 green stack remains green."
       }
+    },
+    {
+      "day": 23,
+      "phase": 4,
+      "date": "2026-05-26",
+      "component": "context_engine+orchestrator",
+      "feature": "failure_modes_phase4_wrap",
+      "feature_shipped": true,
+      "tests_passing": 636,
+      "tests_added_today": 85,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset; PG-integration tests gated",
+      "coverage_touched_modules_pct": {
+        "context_engine.quarantine": 100,
+        "context_engine.timeouts": 95,
+        "context_engine.safety.prompt_injection": 100,
+        "orchestrator.planner": 99
+      },
+      "failure_modes_shipped": {
+        "llm_api_down": {
+          "mitigation": "planner falls back to rule table with ProposedBy.FALLBACK",
+          "tests": 4,
+          "origin_day": 9,
+          "day23_action": "fresh test coverage + documentation lock-in"
+        },
+        "postgres_slow": {
+          "mitigation": "context_engine.timeouts.with_deadline returns fallback with degraded=True",
+          "tests": 5,
+          "origin_day": 23,
+          "day23_action": "new module"
+        },
+        "malformed_event": {
+          "mitigation": "per-tenant quarantine ring + RequestValidationError handler + GET /quarantine/recent",
+          "tests": 14,
+          "origin_day": 23,
+          "day23_action": "new module + API surface"
+        },
+        "prompt_injection": {
+          "mitigation": "6-family regex sanitiser + BEGIN/END_UNTRUSTED wrapping + audit flag-stamp + ingestion-time flag-and-ingest",
+          "tests": 62,
+          "origin_day": 23,
+          "day23_action": "new module + planner integration + adversarial sweep"
+        }
+      },
+      "adversarial_corpus": {
+        "known_attacks_count": 32,
+        "clean_messages_count": 13,
+        "attack_flag_rate_threshold": 0.9,
+        "attack_flag_rate_actual": 1.0,
+        "false_positive_rate_threshold": 0.1,
+        "false_positive_rate_actual": 0.0
+      },
+      "phase4_wrap": {
+        "phase_days": "19-23",
+        "phase_test_delta": "491 -> 636 (+145 tests)",
+        "phase_modules_added": [
+          "context_engine.quarantine",
+          "context_engine.timeouts",
+          "context_engine.safety"
+        ],
+        "phase_invariants_verified": [
+          "idempotency",
+          "tenant_isolation",
+          "race_conditions",
+          "load_capacity",
+          "failure_modes"
+        ],
+        "champion_carry_forward": [
+          "hybrid retrieval (Day 18)",
+          "declarative-YAML policy (Day 18)"
+        ]
+      },
+      "notes": "Phase 4 wrap day. LLM mode mock; benchmark numbers from Day 22 still canonical. PR phase/4-hardening squash-merged on this commit."
     }
   ]
 }

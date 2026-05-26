@@ -23,7 +23,10 @@ import warnings
 from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from context_engine.customer_repository import (
     CustomerRepository,
@@ -37,7 +40,14 @@ from context_engine.ingestion import (
 )
 from context_engine.linking import resolve_customer
 from context_engine.llm import get_client
+from context_engine.quarantine import (
+    QuarantineBuffer,
+    QuarantineReason,
+    get_quarantine,
+)
 from context_engine.repository import EventRepository, InMemoryEventRepository
+from context_engine.safety import sanitize_for_prompt
+from context_engine.safety.prompt_injection import has_injection_markers
 
 # `.env` lives at the project root and is loaded once at import time.
 load_dotenv()
@@ -52,6 +62,53 @@ app = FastAPI(
     ),
     version="0.2.0",
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_quarantine_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Day 23 — quarantine the raw payload on Pydantic validation
+    failure, then emit FastAPI's standard 422 response shape.
+
+    We keep the 422 contract identical (existing tests rely on the
+    `detail` array), but the quarantine record gives operators a feed
+    of "events we couldn't even parse" — the SYSTEM_DESIGN §5.6 dead-
+    letter pattern that protects against silent schema drift.
+
+    Tenant scoping: we try to recover `tenant_id` from the raw body so
+    the record lands in the right tenant's bucket. If recovery fails
+    (the body is so malformed that `tenant_id` isn't a string), the
+    entry lands in the `"_unparseable_"` bucket — the SKILL says
+    "lose nothing, even if we can't categorize it perfectly".
+    """
+    body: Any = None
+    try:
+        body = await request.json()
+    except Exception:  # pylint: disable=broad-except
+        body = None
+    tenant_id = "_unparseable_"
+    if isinstance(body, dict):
+        candidate = body.get("tenant_id")
+        if isinstance(candidate, str) and candidate:
+            tenant_id = candidate
+    try:
+        get_quarantine().quarantine(
+            tenant_id=tenant_id,
+            reason=QuarantineReason.VALIDATION_FAILED,
+            detail=f"Pydantic validation failed: {len(exc.errors())} error(s)",
+            raw_payload=body if isinstance(body, dict) else {"_non_dict_body": str(body)[:500]},
+            context={"path": request.url.path, "method": request.method},
+        )
+    except Exception:  # pylint: disable=broad-except
+        # The handler must never raise — that would mask the user-facing
+        # 422 with a 500. We silently drop the quarantine write rather
+        # than failing the request.
+        pass
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": jsonable_encoder(exc.errors())},
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -135,6 +192,26 @@ def get_customer_repo() -> CustomerRepository:
     return _default_customer_repo
 
 
+def _payload_strings(payload: dict[str, Any]) -> list[str]:
+    """Pull out every string leaf from a (possibly nested) payload dict so
+    the injection sanitiser only sees text — never numbers, booleans, or
+    `None`. Used by the Day-23 hardening hook on `POST /events`."""
+    out: list[str] = []
+
+    def _walk(node: Any) -> None:
+        if isinstance(node, str):
+            out.append(node)
+        elif isinstance(node, dict):
+            for v in node.values():
+                _walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                _walk(v)
+
+    _walk(payload)
+    return out
+
+
 # ----------------------------------------------------------------------------
 # Meta + health endpoints (Day 4 — unchanged shape, version + phase bumped).
 # ----------------------------------------------------------------------------
@@ -172,6 +249,51 @@ def root() -> dict[str, Any]:
 @app.get("/healthz", tags=["health"])
 def healthz() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/quarantine/recent", tags=["operations"])
+def quarantine_recent(
+    tenant_id: str,
+    limit: int = 50,
+    buffer: QuarantineBuffer = Depends(get_quarantine),
+) -> dict[str, Any]:
+    """Operator visibility for malformed events (Day 23).
+
+    Multi-tenant invariant (rule 15): `tenant_id` is REQUIRED; there
+    is no global view. A caller asking for Bank A's quarantine never
+    sees Bank B's records.
+
+    The endpoint is read-only and intentionally unauthenticated at the
+    Phase-4 surface — the Phase-6 production polish will sit it behind
+    the same approver auth as `/approvals/*`. Today it's a triage
+    convenience.
+    """
+    if not tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="tenant_id query parameter required",
+        )
+    if limit < 1 or limit > 200:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="limit must be between 1 and 200",
+        )
+    entries = buffer.recent(tenant_id, limit=limit)
+    return {
+        "tenant_id": tenant_id,
+        "count": len(entries),
+        "entries": [
+            {
+                "id": e.id,
+                "reason": e.reason.value,
+                "detail": e.detail,
+                "quarantined_at": e.quarantined_at.isoformat(),
+                "raw_payload": e.raw_payload,
+                "context": e.context,
+            }
+            for e in entries
+        ],
+    }
 
 
 @app.get("/readyz", tags=["health"])
@@ -230,6 +352,7 @@ def post_event(
     repo: EventRepository = Depends(get_repo),
     bus: EventBus = Depends(get_bus),
     customer_repo: CustomerRepository = Depends(get_customer_repo),
+    quarantine: QuarantineBuffer = Depends(get_quarantine),
 ) -> dict[str, Any]:
     """Accept an event from any channel.
 
@@ -265,6 +388,15 @@ def post_event(
     """
     idem = x_idempotency_key or request.idempotency_key
     if not idem:
+        # Day 23: drop the raw payload into the quarantine ring buffer
+        # so operators can triage missing-key bugs without grepping
+        # access logs. The 400 response shape is unchanged.
+        quarantine.quarantine(
+            tenant_id=request.tenant_id,
+            reason=QuarantineReason.MISSING_IDEMPOTENCY_KEY,
+            detail="POST /events with neither X-Idempotency-Key nor body idempotency_key",
+            raw_payload=request.model_dump(mode="json"),
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
@@ -280,9 +412,39 @@ def post_event(
     ):
         # Disagreement is a programmer error worth surfacing — silently
         # picking one would mask the bug at the upstream caller.
+        quarantine.quarantine(
+            tenant_id=request.tenant_id,
+            reason=QuarantineReason.IDEMPOTENCY_KEY_MISMATCH,
+            detail=(
+                f"X-Idempotency-Key={x_idempotency_key!r} disagrees with "
+                f"body idempotency_key={request.idempotency_key!r}"
+            ),
+            raw_payload=request.model_dump(mode="json"),
+            context={"header_key": x_idempotency_key, "body_key": request.idempotency_key},
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="X-Idempotency-Key header and body idempotency_key disagree",
+        )
+
+    # Day 23 — injection detection on the payload body. We FLAG (record
+    # to quarantine for operator visibility) but do NOT block ingestion:
+    # blocking would create a false-positive denial-of-service vector
+    # (a legitimate banker saying "please ignore my previous request"
+    # would be locked out). The planner's sanitiser is the real
+    # mitigation (it rewrites the brief before the LLM sees it); the
+    # quarantine entry is the audit signal.
+    if has_injection_markers(_payload_strings(request.payload)):
+        quarantine.quarantine(
+            tenant_id=request.tenant_id,
+            reason=QuarantineReason.INJECTION_SUSPECTED,
+            detail=(
+                "payload contains injection-marker text; planner will "
+                "sanitise before LLM call (this entry is for visibility "
+                "only — event still ingested)"
+            ),
+            raw_payload=request.model_dump(mode="json"),
+            context={"idempotency_key": idem, "blocking": False},
         )
 
     # Replay short-circuit: if this idempotency key has already been seen
@@ -315,6 +477,16 @@ def post_event(
     try:
         link = resolve_customer(request, customer_repo=customer_repo)
     except LookupError as exc:
+        # Day 23: quarantine unknown-customer events so operators can
+        # see "Bank A is sending us events tagged with cust_xyz that
+        # we don't know about" without grepping the 404 log channel.
+        quarantine.quarantine(
+            tenant_id=request.tenant_id,
+            reason=QuarantineReason.UNKNOWN_CUSTOMER,
+            detail=str(exc),
+            raw_payload=request.model_dump(mode="json"),
+            context={"idempotency_key": idem},
+        )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
         ) from exc
