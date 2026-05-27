@@ -17,6 +17,10 @@ Ship order:
 * Day 15 — :mod:`benchmarks.strategies.hybrid` (recency for warm
   window + semantic for mid-range + summary for cold tail — the
   champion against which Day 18 picks the Phase-3 winner).
+* Day 24 — :mod:`benchmarks.strategies.reranked` (Phase-5 two-stage
+  retrieval: semantic top-K candidates re-ranked with a deterministic
+  cross-encoder proxy — bigram + Jaccard + recency on top of the
+  first-stage cosine signal).
 
 Recency stays *also* registered directly inside
 ``benchmarks.context_engine_bench`` (it's the Day-12 baseline that
@@ -36,5 +40,6 @@ from benchmarks.strategies import recency  # noqa: F401
 from benchmarks.strategies import semantic  # noqa: F401
 from benchmarks.strategies import summarized  # noqa: F401
 from benchmarks.strategies import hybrid  # noqa: F401
+from benchmarks.strategies import reranked  # noqa: F401
 
-__all__ = ["naive", "recency", "semantic", "summarized", "hybrid"]
+__all__ = ["naive", "recency", "semantic", "summarized", "hybrid", "reranked"]

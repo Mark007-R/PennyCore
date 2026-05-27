@@ -1605,6 +1605,47 @@
         "verified_via": "docker compose up -d --build --wait + curl /readyz on 8001/8002"
       },
       "backfill_note": "Day-23 main commit shipped timeout-only (with_deadline). Backfill commit adds the queue half (SlowCallQueue + with_deadline_and_defer + GET /deferred/pending) so the full SKILL Day-23 line item Postgres slow -> timeout + queue is satisfied. Coverage numbers reasoned in main commit replaced with pytest --cov measured numbers. Stack-boot verification (docker compose up --wait) confirmed all 4 containers Healthy + both new operator endpoints live."
+    },
+    {
+      "day": 24,
+      "phase": 5,
+      "date": "2026-05-27",
+      "component": "context-engine",
+      "feature": "two-stage retrieval \u2014 cross-encoder-style re-ranker",
+      "feature_shipped": true,
+      "tests_passing": 681,
+      "tests_added_today": 28,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "Postgres integration tests require DATABASE_URL \u2014 unchanged from Day 23 baseline.",
+      "coverage_touched_modules_pct": "rerank.py 100% (28 tests cover every branch); semantic.py +1 line covered (timestamp metadata)",
+      "benchmark_run": true,
+      "benchmark_dataset_size": 200,
+      "benchmark_budgets_tested": [
+        8000,
+        1000
+      ],
+      "benchmark_strategies_compared": [
+        "semantic",
+        "reranked"
+      ],
+      "rerank_top_k_default": 30,
+      "rerank_feature_weights": {
+        "cosine_carry": 1.0,
+        "bigram_overlap": 0.7,
+        "jaccard": 0.4,
+        "recency_decay": 0.2
+      },
+      "rerank_latency_overhead_p50_pct_8k": 70,
+      "rerank_latency_overhead_p95_pct_8k": 74,
+      "rerank_latency_overhead_p50_pct_1k": 41,
+      "briefs_text_differ_pct_1k": 73,
+      "quality_delta_mean_8k": 0.0,
+      "quality_delta_mean_1k": 0.0,
+      "judge_mode": "mock_proxy",
+      "phase5_pr_opened": true,
+      "phase5_branch": "phase/5-naive-baseline",
+      "notes": "Re-rank rewrites brief ordering on 145/200 pairs (73%) but mock-judge proxy is recall-based and order-blind \u2014 same quality histograms. Honest negative result; Day 28 real-LLM re-judge may reveal an ordering quality signal the proxy cannot see.",
+      "system_boot": "pytest sweep green; benchmark harness runs end-to-end on the 200-pair dataset; no docker boot today (no new service or schema change)."
     }
   ]
 }
