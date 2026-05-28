@@ -457,3 +457,56 @@ Schema for each entry:
   truncation. Day 14's semantic + summarized strategies should fight
   for that 558-token-per-pair headroom — replacing dropped recency
   segments with semantically relevant or summarized older content.
+
+---
+
+## Day 25 (Phase 5) — Semantic response cache: cost reduction vs. false-hit risk
+
+**Question:** How much LLM spend does a semantic response cache (keyed
+on query+brief embedding similarity) eliminate, and at what
+correctness risk?
+
+**Workload:** 298 requests over the 200-pair Phase-3 dataset (seed 42):
+200 cold contacts + 40 exact returns + 58 deterministic lexical
+paraphrase returns. No-cache baseline cost = **$1.3775** (input $3 /
+output $15 per MTok, `len//4` token estimate).
+
+**Two cache scopes compared:**
+
+| Scope | Threshold | Cost reduction | False-hit rate |
+|-------|-----------|----------------|----------------|
+| tenant | 1.00 | 16.4% | **0%** |
+| tenant | 0.95 | 71.7% | 46.4% |
+| tenant | 0.90 | 83.9% | 71.9% |
+| tenant | 0.80 | 94.0% | 89.9% |
+| tenant_customer | 1.00 | 16.4% | **0%** |
+| tenant_customer | 0.95 | 34.4% | **0%** |
+| tenant_customer | 0.90 | 34.4% | **0%** |
+| tenant_customer | 0.80 | 34.4% | **0%** |
+
+**Isolation probe:** store all answers under `namespace_A`, replay
+identical prompts under empty `namespace_B` at threshold 0.5 →
+`cross_namespace_hits = 0`. Isolation is structural (separate
+namespaces), not a side-effect of the similarity gate.
+
+**Findings:**
+- The cost-reduction number is meaningless without the false-hit
+  column. A tenant-wide semantic cache "cuts cost 94%" while serving
+  the **wrong customer's answer 90% of the time** — the brief is ~99%
+  of the cache-key tokens and briefs are mostly shared boilerplate, so
+  different customers near-collide under hashed-BoW cosine.
+- **Per-customer scoping** (`namespace = tenant_id:customer_id`) makes
+  cross-customer collisions structurally impossible: **34.4% cost
+  reduction at 0% false hits**, threshold-insensitive (0.95 → 0.60 all
+  identical) — it captures every paraphrase return (each maps to that
+  customer's own prior answer) and nothing else. This **doubles the
+  exact-cache saving** (16.4% → 34.4%).
+- Exact and semantic caches tie at threshold 1.0 (16.4%); the semantic
+  layer only earns its keep by safely catching paraphrases, which the
+  per-customer namespace makes safe.
+
+**Champion:** per-customer scope, threshold 0.90.
+**Caveat:** hashed-BoW catches *lexical* paraphrases (shared words);
+deep semantic paraphrases (same meaning, different words) need a neural
+embedder — the documented one-line swap in `semantic_cache.py`.
+**Artifact:** `results/phase5_semantic_cache.json`.

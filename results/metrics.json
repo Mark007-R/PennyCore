@@ -1646,6 +1646,63 @@
       "phase5_branch": "phase/5-naive-baseline",
       "notes": "Re-rank rewrites brief ordering on 145/200 pairs (73%) but mock-judge proxy is recall-based and order-blind \u2014 same quality histograms. Honest negative result; Day 28 real-LLM re-judge may reveal an ordering quality signal the proxy cannot see.",
       "system_boot": "pytest sweep green; benchmark harness runs end-to-end on the 200-pair dataset; no docker boot today (no new service or schema change)."
+    },
+    {
+      "day": 25,
+      "phase": 5,
+      "date": "2026-05-28",
+      "component": "context-engine",
+      "feature": "semantic response cache (query+brief embedding similarity) + cost-reduction benchmark",
+      "feature_shipped": true,
+      "tests_passing": 717,
+      "tests_added_today": 36,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "Postgres integration tests require DATABASE_URL -- unchanged from Day 24 baseline.",
+      "llm_mode": "mock (cache + benchmark deterministic and LLM-free; responses are dataset ground-truth so false hits are measurable)",
+      "modules_added": [
+        "context_engine/llm/semantic_cache.py",
+        "benchmarks/semantic_cache_bench.py",
+        "tests/unit/test_semantic_cache.py"
+      ],
+      "cache_design": {
+        "lookup": "two-layer: exact-string dict fast path (bypasses threshold; O(1)) -> cosine nearest-neighbor scan gated by threshold",
+        "embedder": "reuses context_engine.retrieval.semantic._embed (FNV-1a hashed BoW) + _cosine -- same vector space as retrieval, deterministic, neural swap-in is one line",
+        "scoping": "tenant-scoped namespaces (multi-tenant isolation, SKILL HARD RULE 15); benchmark also evaluates per-(tenant,customer) scoping",
+        "eviction": "per-tenant LRU on max_entries; lookup hit promotes (LRU touch)",
+        "cost_model_usd_per_mtok": {"input": 3.0, "output": 15.0},
+        "wrapper": "CachingLLMClient -- tenant bound at construction so complete() stays LLMClient-Protocol-compatible (drop-in)"
+      },
+      "benchmark": {
+        "workload": "298 requests = 200 cold contacts + 40 exact returns + 58 lexical-paraphrase returns over the 200-pair Phase-3 dataset (seed 42)",
+        "no_cache_baseline_cost_usd": 1.377513,
+        "threshold_sweep_by_scope": {
+          "tenant": {
+            "1.0": {"hit_rate": 0.134, "cost_reduction_pct": 16.35, "false_hit_rate": 0.0},
+            "0.95": {"hit_rate": 0.470, "cost_reduction_pct": 71.72, "false_hit_rate": 0.464},
+            "0.9": {"hit_rate": 0.621, "cost_reduction_pct": 83.94, "false_hit_rate": 0.719},
+            "0.8": {"hit_rate": 0.829, "cost_reduction_pct": 94.0, "false_hit_rate": 0.899},
+            "0.7": {"hit_rate": 0.953, "cost_reduction_pct": 98.08, "false_hit_rate": 0.972}
+          },
+          "tenant_customer": {
+            "1.0": {"hit_rate": 0.134, "cost_reduction_pct": 16.35, "false_hit_rate": 0.0},
+            "0.95": {"hit_rate": 0.329, "cost_reduction_pct": 34.38, "false_hit_rate": 0.0},
+            "0.9": {"hit_rate": 0.329, "cost_reduction_pct": 34.38, "false_hit_rate": 0.0},
+            "0.8": {"hit_rate": 0.329, "cost_reduction_pct": 34.38, "false_hit_rate": 0.0},
+            "0.7": {"hit_rate": 0.329, "cost_reduction_pct": 34.38, "false_hit_rate": 0.0}
+          }
+        },
+        "champion_config": "per-customer scope, threshold 0.90 -> 34.4% cost reduction, 0% false hits (2x the exact-cache saving of 16.4%)",
+        "isolation_probe": {"method": "store under namespace_A, replay identical prompts under empty namespace_B at threshold 0.5", "cross_namespace_hits": 0, "isolation_holds": true},
+        "artifact": "results/phase5_semantic_cache.json"
+      },
+      "key_findings": [
+        "Per-tenant semantic cache 'cuts cost 94%' at threshold 0.8 but serves the wrong customer's answer 89.9% of the time -- brief dominates the key (~99% of tokens) and briefs are mostly shared boilerplate, so different customers near-collide.",
+        "Per-customer scoping (namespace = tenant_id:customer_id) is the fix: 34.4% cost reduction at 0% false hits, threshold-insensitive.",
+        "Exact and semantic caches tie at threshold 1.0 (16.4%); the semantic layer earns its keep only by safely catching paraphrases, which requires the per-customer namespace."
+      ],
+      "phase5_pr": "phase/5-naive-baseline (mid-phase commit, Day 25)",
+      "notes": "Two bugs surfaced and were fixed: (1) threshold=1.0 missed identical prompts because self-cosine is 0.999...998 < 1.0 -> added exact-string fast path (GPTCache shape, also faster); (2) first isolation probe falsely reported 125 cross-tenant 'leaks' by storing every pair under all tenants -> re-designed to store under one namespace and read from an empty one (0 hits). Data isolation was always intact (unit tests prove it); the probe was wrong.",
+      "system_boot": "pytest sweep 717 green; benchmark runs end-to-end on the 200-pair dataset; no docker boot today (no new service or schema change)."
     }
   ]
 }
