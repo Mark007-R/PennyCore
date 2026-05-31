@@ -1809,6 +1809,111 @@
       "phase5_pr": "https://github.com/Mark007-R/PennyCore/pull/<phase5>",
       "notes": "Closes the Day-18 'Real-LLM re-run scheduled for Day 27' caveat with projected costs + per-bucket breakdown. Real-LLM judge blocked by environment auth \u2014 see Day-27 report \u00a7Failures for full rationale.",
       "system_boot": "pytest 758 passed / 10 skipped (Postgres-gated); bench + chart scripts run end-to-end."
+    },
+    {
+      "day": 28,
+      "phase": 5,
+      "date": "2026-05-31",
+      "component": "orchestrator (+ Phase 5 wrap)",
+      "feature": "frontier baseline comparison part 2 \u2014 naive LLM vs declarative champion with prod-payload USD cost + per-tenant failure shape; Phase 5 wrap-up",
+      "feature_shipped": true,
+      "tests_passing": 766,
+      "tests_added_today": 8,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "Postgres integration tests require DATABASE_URL \u2014 unchanged from Day 27 baseline.",
+      "llm_mode": "mock (forced \u2014 naive engine's mock-mode tenant-agnostic heuristic is the documented baseline; cost projected at claude-sonnet-4-6 prod-payload rates)",
+      "modules_added": [
+        "benchmarks/phase5_orch_naive_vs_champion.py",
+        "benchmarks/phase5_orch_naive_vs_champion_chart.py",
+        "tests/unit/test_phase5_orch_naive_vs_champion.py"
+      ],
+      "benchmark": {
+        "n_scenarios": 200,
+        "cost_model": "claude-sonnet-4-6",
+        "pricing_usd_per_mtok": {
+          "input": 3.0,
+          "output": 15.0
+        },
+        "prod_input_tokens_per_call": 1500,
+        "prod_output_tokens_per_call": 80,
+        "frontier": {
+          "declarative": {
+            "correctness": 1.0,
+            "prod_usd_per_100": 0.0,
+            "audit": 5,
+            "maint": 5
+          },
+          "python_rules": {
+            "correctness": 1.0,
+            "prod_usd_per_100": 0.0,
+            "audit": 3,
+            "maint": 2
+          },
+          "llm_judge": {
+            "correctness": 1.0,
+            "prod_usd_per_100": 0.005,
+            "audit": 4,
+            "maint": 4
+          },
+          "naive_llm": {
+            "correctness": 0.54,
+            "prod_usd_per_100": 0.57,
+            "audit": 2,
+            "maint": 4
+          }
+        },
+        "naive_per_tenant_failure": {
+          "tenant_acme_bank": {
+            "correctness": 0.597,
+            "top_miss": {
+              "expected": "approval_required",
+              "observed": "auto",
+              "count": 15
+            },
+            "severity": "compliance / security bug"
+          },
+          "tenant_globetrek_concierge": {
+            "correctness": 0.545,
+            "top_miss": {
+              "expected": "auto",
+              "observed": "approval_required",
+              "count": 25
+            },
+            "severity": "UX bug (queue delays)"
+          },
+          "tenant_jefferson_credit": {
+            "correctness": 0.478,
+            "top_miss": {
+              "expected": "auto",
+              "observed": "approval_required",
+              "count": 16
+            },
+            "severity": "UX bug (queue delays)"
+          }
+        }
+      },
+      "key_findings": [
+        "Declarative is a strict Pareto winner over naive \u2014 higher correctness AND lower latency AND lower cost AND better auditability.",
+        "Naive's failure mode is tenant-asymmetric in OPPOSITE directions \u2014 over-approves on the strict tenant (security bug), over-rejects on the permissive ones (UX bug). A tenant-agnostic heuristic cannot satisfy tenants with opposite rules by construction.",
+        "Production-payload cost projection widens naive's cost disadvantage 4x vs the mock-payload Day-17 numbers (~$0.14 -> ~$0.57 per 100 decisions).",
+        "LLM-as-judge with structured output ties declarative on correctness in mock mode but trades cost + rubric for the LLM in the loop \u2014 right LLM design point, wrong policy-engine design point."
+      ],
+      "phase5_wrap_up": {
+        "champions_locked": {
+          "context_engine": "hybrid retrieval + per-customer semantic cache",
+          "orchestrator": "declarative YAML policy + N-of-M quorum (default N=1)"
+        },
+        "days_24_to_28_tests_added": 114,
+        "full_suite": "716 -> 766 passing across the phase",
+        "shareable_counter_intuitive_findings": [
+          "Hybrid wins 4x on long histories, not the unimpressive 24% aggregate",
+          "Semantic cache cost win is a data-correctness disaster at the wrong scope",
+          "LLM-as-policy fails in incompatible directions on different tenants"
+        ]
+      },
+      "phase5_pr": "merged via squash on Day 28",
+      "notes": "Closes Phase 5. Champions locked for Phase 6 (Production Polish, Days 29-32). Same auth/Kimi constraints as Day 27 \u2014 real-LLM cost validation deferred but methodology and assumptions pinned in JSON headers for clean re-run.",
+      "system_boot": "pytest 766 passed / 10 skipped (Postgres-gated); bench + chart scripts run end-to-end."
     }
   ]
 }

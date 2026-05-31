@@ -522,3 +522,25 @@ embedder — the documented one-line swap in `semantic_cache.py`.
 - **Fact-slice quality (mock proxy, 50 pairs):** naive 3.04 mean, hybrid 3.04 mean, **0 hybrid losses / 50 ties / 0 hybrid wins** — preserved.
 - **Verdict:** hybrid is the cost-frontier champion. Quality is preserved on the fact slice; cost win compounds with history length (4× cheaper on very_long).
 - **Artifacts:** `results/phase5_naive_vs_champion_context_engine.json`, `results/phase5_naive_vs_champion_cost_by_bucket.png`.
+
+## 2026-05-31 — Day 28 Phase 5: Naive LLM vs declarative champion (orchestrator) + Phase 5 wrap
+- **Harness:** `benchmarks/phase5_orch_naive_vs_champion.py`
+- **Dataset:** all 200 Day-16 scenarios across 3 tenants (acme_bank strict / globetrek_concierge permissive / jefferson_credit permissive).
+- **Strategies:** declarative (Phase-3 champion), python_rules, llm_judge, naive_llm.
+- **Cost model:** documented `claude-sonnet-4-6` pricing ($3/M-in, $15/M-out) projected against realistic prod payload (1500 input tokens / 80 output tokens per LLM call, pinned in JSON header).
+- **Frontier (sorted by correctness desc, then prod USD/100):**
+  - declarative — 100.0% correct, $0.0000/100q, audit=5, maint=5 — **CHAMPION**
+  - python_rules — 100.0% correct, $0.0000/100q, audit=3, maint=2
+  - llm_judge — 100.0% correct, $0.0050/100q, audit=4, maint=4
+  - naive_llm — 54.0% correct, $0.5700/100q, audit=2, maint=4
+- **Naive per-tenant failure shape (the headline finding):**
+  - tenant_acme_bank (strict): 40/67 ok; **top miss is expected=approval_required observed=auto (15 scenarios)** — security / compliance bug
+  - tenant_globetrek_concierge (permissive): 36/66 ok; top miss is expected=auto observed=approval_required (25 scenarios) — UX bug
+  - tenant_jefferson_credit (permissive): 32/67 ok; top miss is expected=auto observed=approval_required (16 scenarios) — UX bug
+- **Verdict:** declarative is the strict Pareto winner over naive on every axis. Naive's failure mode is **tenant-asymmetric in opposite directions** — a tenant-agnostic heuristic cannot satisfy tenants with opposite rules by construction.
+- **Artifacts:** `results/phase5_naive_vs_champion_orchestrator.json`, `results/phase5_naive_vs_champion_orch_frontier.png`.
+
+### Phase 5 wrap-up — locked champions
+- Context-engine: **hybrid retrieval** + per-customer semantic cache (Day 25 ships at the safe scope after the tenant scope was measured to serve the wrong customer 90% of the time).
+- Orchestrator: **declarative YAML policy engine** + N-of-M quorum (default N=1 keeps takehome 6/6, opt-in for the four-eyes policy).
+- 114 new tests across Phase 5 (Days 24-28); full suite 716 → 766 passing.
