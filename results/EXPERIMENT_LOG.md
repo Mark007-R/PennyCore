@@ -510,3 +510,15 @@ namespaces), not a side-effect of the similarity gate.
 deep semantic paraphrases (same meaning, different words) need a neural
 embedder — the documented one-line swap in `semantic_cache.py`.
 **Artifact:** `results/phase5_semantic_cache.json`.
+
+## 2026-05-30 — Day 27 Phase 5: Naive baseline vs hybrid champion (context-engine)
+- **Harness:** `benchmarks/phase5_naive_vs_champion.py`
+- **Dataset:** all 200 Phase-3 pairs (50 fact-bearing judged); buckets: 100 short / 60 medium / 30 long / 10 very_long.
+- **Strategies:** naive_dump (50K budget), recency (8K), hybrid (8K — Phase-3 champion).
+- **Cost model:** documented `claude-sonnet-4-6` pricing ($3/M input, $15/M output) projected against measured brief tokens. System prompt = 200 tok, response = 180 tok (pinned in JSON header).
+- **Judge:** mock-proxy (Anthropic 401, Kimi-K2.6 reasoning-content quirk — see Day-27 report §Failures).
+- **Aggregate cost:** naive $0.7685/100q, recency $0.7601/100q, **hybrid $0.5851/100q (-24% vs naive)**.
+- **very_long bucket cost:** naive $2.867/100q, recency $2.700/100q, **hybrid $0.716/100q (-75% vs naive)**.
+- **Fact-slice quality (mock proxy, 50 pairs):** naive 3.04 mean, hybrid 3.04 mean, **0 hybrid losses / 50 ties / 0 hybrid wins** — preserved.
+- **Verdict:** hybrid is the cost-frontier champion. Quality is preserved on the fact slice; cost win compounds with history length (4× cheaper on very_long).
+- **Artifacts:** `results/phase5_naive_vs_champion_context_engine.json`, `results/phase5_naive_vs_champion_cost_by_bucket.png`.
