@@ -67,7 +67,7 @@ from typing import Any
 
 from contracts.actions import Action, ActionProposal, ActionStatus, ActionType
 from contracts.audit import AuditActorKind, AuditKind, AuditLogEntry
-from contracts.policies import PolicyDecision
+from contracts.policies import ApprovalRule, PolicyDecision
 from orchestrator.approval_queue import (
     ApprovalNotFoundError,
     ApprovalQueue,
@@ -76,6 +76,7 @@ from orchestrator.approval_queue import (
 from orchestrator.audit import AuditLog, InMemoryAuditLog
 from orchestrator.executor import ActionExecutor
 from orchestrator.policy import DeclarativePolicyEngine, PolicyEngine
+from orchestrator.quorum import QuorumPolicy
 
 _LOG = logging.getLogger(__name__)
 
@@ -173,12 +174,18 @@ class DecisionPipeline:
         audit_log: AuditLog,
         executor: ActionExecutor | None = None,
         actions: InMemoryActionStore | None = None,
+        quorum: QuorumPolicy | None = None,
     ) -> None:
         self.policy = policy
         self.queue = queue
         self.audit = audit_log
         self.executor = executor or ActionExecutor()
         self.actions = actions or InMemoryActionStore()
+        # Quorum config for parallel approvals (Day 26). An empty policy
+        # means every approval_required action needs a single approver —
+        # the Phase-2 behavior — so this is invisible until a tenant
+        # opts in via `quorum.set_rule(...)`.
+        self.quorum = quorum or QuorumPolicy()
         self._lock = threading.RLock()
         # Idempotency index: (tenant_id, event_id) -> list[action_id]
         self._dedup: dict[_DedupKey, list[str]] = {}
@@ -252,7 +259,19 @@ class DecisionPipeline:
         decided_by: str = "human",
         expected_tenant_id: str | None = None,
     ) -> Action:
-        """Approve a pending action and execute it.
+        """Record one approval vote; execute the action once quorum is
+        reached.
+
+        For a single-approver action (the default) the first vote reaches
+        quorum and the action executes immediately — identical to the
+        Phase-2 behavior. For an N-of-M action, an early vote is recorded
+        and the action stays `pending_approval`; the action only executes
+        on the vote that completes the quorum.
+
+        Every vote — partial or quorum-completing — writes an `APPROVAL`
+        audit row carrying the running tally (`approvals_recorded`,
+        `required_approvals`, `quorum_reached`), so a compliance officer
+        can reconstruct exactly who signed off and in what order.
 
         Raises:
           * `ActionNotFoundError` if action_id is unknown OR (when
@@ -265,7 +284,11 @@ class DecisionPipeline:
           * `ApprovalNotFoundError` if no queue row exists (the action
              was auto-executed or rejected at policy time).
           * `ApprovalStateError` if the queue row is already resolved
-             (double-approve).
+             (double-approve / vote after quorum).
+          * `ApproverNotEligibleError` if `decided_by` is outside the
+             action's eligible-approver pool.
+          * `DuplicateApproverError` if `decided_by` already voted on
+             this action.
         """
         with self._lock:
             action = self.actions.get(action_id)
@@ -276,9 +299,11 @@ class DecisionPipeline:
                 raise ActionNotFoundError(
                     f"no action with id={action_id!r}"
                 )
-            # The queue raises if not pending — this enforces
-            # double-approve protection (scenario 3).
-            self.queue.approve(action_id, decided_by=decided_by)
+            # The queue raises if not pending / ineligible / duplicate.
+            # Single-approver rows resolve here; quorum rows may return
+            # still-pending after recording the vote.
+            rule = self.queue.approve(action_id, decided_by=decided_by)
+            quorum_reached = rule.state == "approved"
 
             self._write_audit(
                 kind=AuditKind.APPROVAL,
@@ -287,10 +312,21 @@ class DecisionPipeline:
                 event_id=action.event_id,
                 actor_kind=AuditActorKind.HUMAN,
                 actor_id=decided_by,
-                payload={"prior_status": action.status.value},
+                payload={
+                    "prior_status": action.status.value,
+                    "approvals_recorded": len(rule.approvals),
+                    "required_approvals": rule.required_approvals,
+                    "quorum_reached": quorum_reached,
+                },
             )
 
-            # Transition: pending_approval -> pending_exec -> executed
+            if not quorum_reached:
+                # Partial quorum — the action stays pending_approval; no
+                # execution until the final approver votes. Return the
+                # action unchanged so the caller sees it still pending.
+                return action
+
+            # Quorum reached: pending_approval -> pending_exec -> executed.
             promoted = action.model_copy(
                 update={
                     "status": ActionStatus.PENDING_EXEC,
@@ -299,6 +335,13 @@ class DecisionPipeline:
             )
             self.actions.put(promoted)
             return self._execute(promoted)
+
+    def approval_rule(self, action_id: str) -> ApprovalRule | None:
+        """Return the queue row (with its quorum tally) for an action, or
+        ``None`` if the action was never queued for approval. Read-only —
+        the admin UI and the HTTP `_action_view` use it to render approval
+        progress (`approvals_remaining`, who has voted)."""
+        return self.queue.get(action_id)
 
     def reject_action(
         self,
@@ -411,6 +454,7 @@ class DecisionPipeline:
                 self.queue.clear()
             if hasattr(self.audit, "clear"):
                 self.audit.clear()
+            self.quorum.clear()
 
     # ------------------------------------------------------------------
     # Internals
@@ -460,7 +504,17 @@ class DecisionPipeline:
                 }
             )
             self.actions.put(queued)
-            self.queue.enqueue(action_id=queued.id, tenant_id=queued.tenant_id)
+            quorum_rule = self.quorum.resolve(queued.tenant_id, queued.action_type)
+            self.queue.enqueue(
+                action_id=queued.id,
+                tenant_id=queued.tenant_id,
+                required_approvals=quorum_rule.required_approvals,
+                eligible_approvers=(
+                    list(quorum_rule.eligible_approvers)
+                    if quorum_rule.eligible_approvers is not None
+                    else None
+                ),
+            )
             return queued
 
         # PolicyDecision.AUTO — straight to execution.

@@ -255,6 +255,11 @@ def semantic_segments(
                     "channel": msg.channel,
                     "sender": msg.sender,
                     "similarity": round(score, 6),
+                    # Carry the raw timestamp for downstream re-rankers
+                    # (Day 24+) that need exact ages. The priority field
+                    # encodes ts as a 1e-12 tiebreaker which is lossy
+                    # when mixed with a cosine score in the unit interval.
+                    "timestamp": msg.timestamp.isoformat(),
                 },
             )
         )
@@ -271,6 +276,7 @@ def semantic_segments(
                 metadata={
                     "action_type": act.action_type,
                     "similarity": round(score, 6),
+                    "timestamp": act.timestamp.isoformat(),
                 },
             )
         )

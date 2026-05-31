@@ -64,7 +64,26 @@ class Policy(BaseModel):
 
 
 class ApprovalRule(BaseModel):
-    """A row in `approval_queue` — one pending action awaiting human review."""
+    """A row in `approval_queue` — one pending action awaiting human review.
+
+    ## N-of-M quorum (Day 26, Phase 5)
+
+    A row can require multiple distinct approvers before it resolves.
+    `required_approvals` (N) is the quorum threshold; `eligible_approvers`
+    (the M pool) constrains *who* may vote (``None`` = any approver).
+    `approvals` accumulates the distinct approver IDs that have voted so
+    far — the row stays `pending` until ``len(approvals) >= required_approvals``,
+    at which point the queue transitions it to `approved`.
+
+    The default `required_approvals=1` / `eligible_approvers=None` reproduces
+    the single-approver Day-10 behavior exactly, so existing callers (the
+    takehome adapter, the Phase-2 pipeline) are unchanged.
+
+    Rejection is a *veto*: a single eligible rejection resolves the row to
+    `rejected` regardless of how many approvals have accumulated. This is
+    the safe default for a compliance surface — one reviewer who spots a
+    problem can stop the action even if others already signed off.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -73,11 +92,22 @@ class ApprovalRule(BaseModel):
     action_id: str = Field(min_length=1, max_length=64)
     state: str = Field(default="pending")
     assigned_to: str | None = Field(default=None, max_length=128)
+    required_approvals: int = Field(default=1, ge=1)
+    eligible_approvers: list[str] | None = Field(default=None)
+    approvals: list[str] = Field(default_factory=list)
     enqueued_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     decided_at: datetime | None = None
     decided_by: str | None = Field(default=None, max_length=128)
     decision_note: str | None = Field(default=None, max_length=2048)
     row_version: int = Field(default=1, ge=1)
+
+    @property
+    def approvals_remaining(self) -> int:
+        """How many more distinct approvals are needed to reach quorum.
+
+        Clamped at zero so a resolved row never reports a negative
+        remaining count."""
+        return max(0, self.required_approvals - len(self.approvals))
 
     @field_validator("state")
     @classmethod

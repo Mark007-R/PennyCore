@@ -50,6 +50,8 @@ from contracts.actions import Action
 from orchestrator.approval_queue import (
     ApprovalNotFoundError,
     ApprovalStateError,
+    ApproverNotEligibleError,
+    DuplicateApproverError,
 )
 from orchestrator.decision_pipeline import (
     ActionNotFoundError,
@@ -379,7 +381,34 @@ def _action_view(action: Action) -> dict[str, Any]:
         "executed_at": (
             action.executed_at.isoformat() if action.executed_at else None
         ),
+        "approval_progress": _approval_progress(action),
         "audit_trail": audit_trail,
+    }
+
+
+def _approval_progress(action: Action) -> dict[str, Any] | None:
+    """Render the N-of-M quorum tally for an action's queue row, or
+    ``None`` if the action was never queued for approval.
+
+    The admin UI's "approve next" panel (Day 31) renders this to show
+    "1 of 3 approvals — waiting on legal, risk" without a second
+    round-trip. For a single-approver action the block still appears
+    (`required=1`), so the front-end has one uniform shape to read.
+    """
+    rule = _pipeline.approval_rule(action.id)
+    if rule is None:
+        return None
+    return {
+        "state": rule.state,
+        "required_approvals": rule.required_approvals,
+        "approvals_recorded": len(rule.approvals),
+        "approvals_remaining": rule.approvals_remaining,
+        "approvers": list(rule.approvals),
+        "eligible_approvers": (
+            list(rule.eligible_approvers)
+            if rule.eligible_approvers is not None
+            else None
+        ),
     }
 
 
@@ -411,8 +440,14 @@ def approvals_approve(
     decided_by: str = Query("api", min_length=1, max_length=128),
     tenant_id: str | None = Query(default=None, min_length=1, max_length=64),
 ) -> dict[str, Any]:
-    """Approve a pending action. The pipeline executes it and writes
-    the approval + execution audit rows.
+    """Record one approval vote on a pending action.
+
+    For a single-approver action the vote executes it immediately. For an
+    N-of-M action the vote is recorded; the action only executes on the
+    vote that completes the quorum. Either way the response embeds
+    `approval_progress`, so the caller sees how many more approvals are
+    needed. `decided_by` identifies the approver — required to be distinct
+    per quorum seat.
 
     Multi-tenant invariant (rule 15): when `tenant_id` is supplied the
     pipeline refuses any action that belongs to a different tenant —
@@ -423,10 +458,11 @@ def approvals_approve(
     tests cover both paths.
 
     Errors:
+      * 403 — `decided_by` is not in the action's eligible-approver pool.
       * 404 — no such action OR cross-tenant attempt with `tenant_id`
         supplied OR no pending row (already resolved / never queued).
-      * 409 — the action is in a non-approvable state (race condition
-        — another approver beat us to it).
+      * 409 — the action is already resolved (race — another approver
+        completed quorum first) OR `decided_by` already voted on it.
     """
     try:
         action = _pipeline.approve_action(
@@ -434,7 +470,9 @@ def approvals_approve(
         )
     except (ActionNotFoundError, ApprovalNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ApprovalStateError as exc:
+    except ApproverNotEligibleError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except (ApprovalStateError, DuplicateApproverError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return _action_view(action)
 
@@ -446,11 +484,14 @@ def approvals_reject(
     decided_by: str = Query("api", min_length=1, max_length=128),
     tenant_id: str | None = Query(default=None, min_length=1, max_length=64),
 ) -> dict[str, Any]:
-    """Reject a pending action. The pipeline transitions it to
-    `rejected` and writes the rejection audit row.
+    """Reject a pending action — a veto. A single eligible rejection
+    resolves the action to `rejected` regardless of how many approvals
+    have accumulated, and writes the rejection audit row.
 
-    Same error contract as `/approvals/{action_id}/approve`, including
-    the optional `tenant_id` cross-tenant guard.
+    Same error contract as `/approvals/{action_id}/approve` (including the
+    403 eligible-approver guard and the optional `tenant_id` cross-tenant
+    guard); a duplicate-approver error can't arise on reject because one
+    veto ends the row.
     """
     try:
         action = _pipeline.reject_action(
@@ -461,6 +502,8 @@ def approvals_reject(
         )
     except (ActionNotFoundError, ApprovalNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ApproverNotEligibleError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ApprovalStateError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return _action_view(action)

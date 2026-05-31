@@ -457,3 +457,90 @@ Schema for each entry:
   truncation. Day 14's semantic + summarized strategies should fight
   for that 558-token-per-pair headroom — replacing dropped recency
   segments with semantically relevant or summarized older content.
+
+---
+
+## Day 25 (Phase 5) — Semantic response cache: cost reduction vs. false-hit risk
+
+**Question:** How much LLM spend does a semantic response cache (keyed
+on query+brief embedding similarity) eliminate, and at what
+correctness risk?
+
+**Workload:** 298 requests over the 200-pair Phase-3 dataset (seed 42):
+200 cold contacts + 40 exact returns + 58 deterministic lexical
+paraphrase returns. No-cache baseline cost = **$1.3775** (input $3 /
+output $15 per MTok, `len//4` token estimate).
+
+**Two cache scopes compared:**
+
+| Scope | Threshold | Cost reduction | False-hit rate |
+|-------|-----------|----------------|----------------|
+| tenant | 1.00 | 16.4% | **0%** |
+| tenant | 0.95 | 71.7% | 46.4% |
+| tenant | 0.90 | 83.9% | 71.9% |
+| tenant | 0.80 | 94.0% | 89.9% |
+| tenant_customer | 1.00 | 16.4% | **0%** |
+| tenant_customer | 0.95 | 34.4% | **0%** |
+| tenant_customer | 0.90 | 34.4% | **0%** |
+| tenant_customer | 0.80 | 34.4% | **0%** |
+
+**Isolation probe:** store all answers under `namespace_A`, replay
+identical prompts under empty `namespace_B` at threshold 0.5 →
+`cross_namespace_hits = 0`. Isolation is structural (separate
+namespaces), not a side-effect of the similarity gate.
+
+**Findings:**
+- The cost-reduction number is meaningless without the false-hit
+  column. A tenant-wide semantic cache "cuts cost 94%" while serving
+  the **wrong customer's answer 90% of the time** — the brief is ~99%
+  of the cache-key tokens and briefs are mostly shared boilerplate, so
+  different customers near-collide under hashed-BoW cosine.
+- **Per-customer scoping** (`namespace = tenant_id:customer_id`) makes
+  cross-customer collisions structurally impossible: **34.4% cost
+  reduction at 0% false hits**, threshold-insensitive (0.95 → 0.60 all
+  identical) — it captures every paraphrase return (each maps to that
+  customer's own prior answer) and nothing else. This **doubles the
+  exact-cache saving** (16.4% → 34.4%).
+- Exact and semantic caches tie at threshold 1.0 (16.4%); the semantic
+  layer only earns its keep by safely catching paraphrases, which the
+  per-customer namespace makes safe.
+
+**Champion:** per-customer scope, threshold 0.90.
+**Caveat:** hashed-BoW catches *lexical* paraphrases (shared words);
+deep semantic paraphrases (same meaning, different words) need a neural
+embedder — the documented one-line swap in `semantic_cache.py`.
+**Artifact:** `results/phase5_semantic_cache.json`.
+
+## 2026-05-30 — Day 27 Phase 5: Naive baseline vs hybrid champion (context-engine)
+- **Harness:** `benchmarks/phase5_naive_vs_champion.py`
+- **Dataset:** all 200 Phase-3 pairs (50 fact-bearing judged); buckets: 100 short / 60 medium / 30 long / 10 very_long.
+- **Strategies:** naive_dump (50K budget), recency (8K), hybrid (8K — Phase-3 champion).
+- **Cost model:** documented `claude-sonnet-4-6` pricing ($3/M input, $15/M output) projected against measured brief tokens. System prompt = 200 tok, response = 180 tok (pinned in JSON header).
+- **Judge:** mock-proxy (Anthropic 401, Kimi-K2.6 reasoning-content quirk — see Day-27 report §Failures).
+- **Aggregate cost:** naive $0.7685/100q, recency $0.7601/100q, **hybrid $0.5851/100q (-24% vs naive)**.
+- **very_long bucket cost:** naive $2.867/100q, recency $2.700/100q, **hybrid $0.716/100q (-75% vs naive)**.
+- **Fact-slice quality (mock proxy, 50 pairs):** naive 3.04 mean, hybrid 3.04 mean, **0 hybrid losses / 50 ties / 0 hybrid wins** — preserved.
+- **Verdict:** hybrid is the cost-frontier champion. Quality is preserved on the fact slice; cost win compounds with history length (4× cheaper on very_long).
+- **Artifacts:** `results/phase5_naive_vs_champion_context_engine.json`, `results/phase5_naive_vs_champion_cost_by_bucket.png`.
+
+## 2026-05-31 — Day 28 Phase 5: Naive LLM vs declarative champion (orchestrator) + Phase 5 wrap
+- **Harness:** `benchmarks/phase5_orch_naive_vs_champion.py`
+- **Dataset:** all 200 Day-16 scenarios across 3 tenants (acme_bank strict / globetrek_concierge permissive / jefferson_credit permissive).
+- **Strategies:** declarative (Phase-3 champion), python_rules, llm_judge, naive_llm.
+- **Cost model:** documented `claude-sonnet-4-6` pricing ($3/M-in, $15/M-out) projected against realistic prod payload (1500 input tokens / 80 output tokens per LLM call, pinned in JSON header).
+- **Frontier (sorted by correctness desc, then prod USD/100):**
+  - declarative — 100.0% correct, $0.0000/100q, audit=5, maint=5 — **CHAMPION**
+  - python_rules — 100.0% correct, $0.0000/100q, audit=3, maint=2
+  - llm_judge — 100.0% correct, $0.0050/100q, audit=4, maint=4
+  - naive_llm — 54.0% correct, $0.5700/100q, audit=2, maint=4
+- **Naive per-tenant failure shape (the headline finding):**
+  - tenant_acme_bank (strict): 40/67 ok; **top miss is expected=approval_required observed=auto (15 scenarios)** — security / compliance bug
+  - tenant_globetrek_concierge (permissive): 36/66 ok; top miss is expected=auto observed=approval_required (25 scenarios) — UX bug
+  - tenant_jefferson_credit (permissive): 32/67 ok; top miss is expected=auto observed=approval_required (16 scenarios) — UX bug
+- **Verdict:** declarative is the strict Pareto winner over naive on every axis. Naive's failure mode is **tenant-asymmetric in opposite directions** — a tenant-agnostic heuristic cannot satisfy tenants with opposite rules by construction.
+- **Artifacts:** `results/phase5_naive_vs_champion_orchestrator.json`, `results/phase5_naive_vs_champion_orch_frontier.png`.
+
+### Phase 5 wrap-up — locked champions
+- Context-engine: **hybrid retrieval** + per-customer semantic cache (Day 25 ships at the safe scope after the tenant scope was measured to serve the wrong customer 90% of the time).
+- Orchestrator: **declarative YAML policy engine** + N-of-M quorum (default N=1 keeps takehome 6/6, opt-in for the four-eyes policy).
+- 114 new tests across Phase 5 (Days 24-28); full suite 716 → 766 passing.
