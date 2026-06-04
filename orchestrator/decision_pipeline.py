@@ -67,6 +67,7 @@ from typing import Any
 
 from contracts.actions import Action, ActionProposal, ActionStatus, ActionType
 from contracts.audit import AuditActorKind, AuditKind, AuditLogEntry
+from contracts.observability import trace_span
 from contracts.policies import ApprovalRule, PolicyDecision
 from orchestrator.approval_queue import (
     ApprovalNotFoundError,
@@ -202,50 +203,75 @@ class DecisionPipeline:
         `orchestrator/planner.py` design notes), so the list always
         has one element on the first call. On a duplicate event, the
         list mirrors the cached previous result.
+
+        Day-30 observability: the entire handle_proposal flow is one
+        span (`pennycore.decision.handle_proposal`) carrying tenant_id,
+        event_id, proposal source, and the final decision. The span is
+        the child of whatever upstream span the caller had open
+        (ingestion → planner → here), so a Jaeger trace shows the
+        whole event → action path on a single timeline.
         """
-        key = _DedupKey(tenant_id=proposal.tenant_id, event_id=proposal.event_id)
-        with self._lock:
-            cached_ids = self._dedup.get(key)
-            if cached_ids is not None:
-                return [self.actions.get(a) for a in cached_ids]
-
-            action = self._materialize_action(proposal)
-            self.actions.put(action)
-            self._write_audit(
-                kind=AuditKind.PROPOSAL,
-                tenant_id=proposal.tenant_id,
-                action_id=action.id,
-                event_id=proposal.event_id,
-                actor_kind=(
-                    AuditActorKind.LLM
-                    if proposal.proposed_by.value == "llm"
-                    else AuditActorKind.FALLBACK
-                ),
-                payload={
-                    "proposed_by": proposal.proposed_by.value,
-                    "action_type": proposal.action_type.value,
-                    "reasoning": proposal.payload.get("_planner_reasoning", ""),
-                },
+        with trace_span(
+            "pennycore.decision.handle_proposal",
+            tenant_id=proposal.tenant_id,
+            attributes={
+                "pennycore.event_id": proposal.event_id,
+                "pennycore.proposal_id": proposal.id,
+                "pennycore.action_type": proposal.action_type.value,
+                "pennycore.proposed_by": proposal.proposed_by.value,
+            },
+        ) as span:
+            key = _DedupKey(
+                tenant_id=proposal.tenant_id, event_id=proposal.event_id
             )
+            with self._lock:
+                cached_ids = self._dedup.get(key)
+                if cached_ids is not None:
+                    span.set_attribute("pennycore.dedup_hit", True)
+                    return [self.actions.get(a) for a in cached_ids]
 
-            decision = self.policy.decide(
-                proposal.tenant_id, proposal.action_type
-            )
-            self._write_audit(
-                kind=AuditKind.DECISION,
-                tenant_id=proposal.tenant_id,
-                action_id=action.id,
-                event_id=proposal.event_id,
-                actor_kind=AuditActorKind.SYSTEM,
-                payload={
-                    "decision": decision.value,
-                    "action_type": proposal.action_type.value,
-                },
-            )
+                action = self._materialize_action(proposal)
+                self.actions.put(action)
+                span.set_attribute("pennycore.action_id", action.id)
+                self._write_audit(
+                    kind=AuditKind.PROPOSAL,
+                    tenant_id=proposal.tenant_id,
+                    action_id=action.id,
+                    event_id=proposal.event_id,
+                    actor_kind=(
+                        AuditActorKind.LLM
+                        if proposal.proposed_by.value == "llm"
+                        else AuditActorKind.FALLBACK
+                    ),
+                    payload={
+                        "proposed_by": proposal.proposed_by.value,
+                        "action_type": proposal.action_type.value,
+                        "reasoning": proposal.payload.get(
+                            "_planner_reasoning", ""
+                        ),
+                    },
+                )
 
-            resolved = self._apply_decision(action, decision)
-            self._dedup[key] = [resolved.id]
-            return [resolved]
+                decision = self.policy.decide(
+                    proposal.tenant_id, proposal.action_type
+                )
+                span.set_attribute("pennycore.decision", decision.value)
+                self._write_audit(
+                    kind=AuditKind.DECISION,
+                    tenant_id=proposal.tenant_id,
+                    action_id=action.id,
+                    event_id=proposal.event_id,
+                    actor_kind=AuditActorKind.SYSTEM,
+                    payload={
+                        "decision": decision.value,
+                        "action_type": proposal.action_type.value,
+                    },
+                )
+
+                resolved = self._apply_decision(action, decision)
+                span.set_attribute("pennycore.action_status", resolved.status.value)
+                self._dedup[key] = [resolved.id]
+                return [resolved]
 
     # ------------------------------------------------------------------
     # Human approval / rejection — invoked from the /approvals API

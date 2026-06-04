@@ -53,9 +53,17 @@ from context_engine.repository import EventRepository, InMemoryEventRepository
 from context_engine.safety import sanitize_for_prompt
 from context_engine.safety.prompt_injection import has_injection_markers
 from contracts.build_info import build_info
+from contracts.observability import setup_tracing
 
 # `.env` lives at the project root and is loaded once at import time.
 load_dotenv()
+
+# Day-30 — configure OpenTelemetry tracing once at module load. No-ops
+# unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set in the environment (the
+# `docker-compose.otel.yml` overlay sets it to the collector). Spans
+# are registered everywhere in the codebase via `contracts.observability`
+# regardless; this call just decides whether they're exported.
+setup_tracing("pennycore-context-engine")
 
 
 app = FastAPI(

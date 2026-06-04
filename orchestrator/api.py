@@ -48,6 +48,7 @@ from context_engine.event_bus import InMemoryEventBus
 from context_engine.llm import get_client
 from contracts.actions import Action
 from contracts.build_info import build_info
+from contracts.observability import setup_tracing
 from orchestrator.approval_queue import (
     ApprovalNotFoundError,
     ApprovalStateError,
@@ -73,6 +74,12 @@ from orchestrator.planner import (
 )
 
 load_dotenv()
+
+# Day-30 — configure OpenTelemetry tracing once at module load. Mirrors
+# the context-engine. No-op unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set
+# (the `docker-compose.otel.yml` overlay points it at the OTLP
+# collector that fans out to Jaeger).
+setup_tracing("pennycore-orchestrator")
 
 
 # ----------------------------------------------------------------------------

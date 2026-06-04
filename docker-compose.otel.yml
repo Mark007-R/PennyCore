@@ -1,0 +1,66 @@
+# PennyCore — OpenTelemetry overlay (Day 30, Phase 6).
+#
+# Compose **overlay** — apply on top of the dev or prod compose:
+#
+#   docker compose \
+#       -f docker-compose.yml \
+#       -f docker-compose.otel.yml \
+#       up
+#
+# Brings up two extra services and points both PennyCore apps at the
+# collector:
+#
+#   - `otel-collector` — receives OTLP/HTTP spans from the apps, fans
+#     them out to Jaeger. Single fan-out point matches the production
+#     pattern (in prod you'd add Tempo, Honeycomb, etc. exporters here
+#     without touching the apps).
+#   - `jaeger` — local Jaeger all-in-one for span visualisation at
+#     http://localhost:16686.
+#
+# `OTEL_EXPORTER_OTLP_ENDPOINT` is injected into both PennyCore services
+# so `contracts.observability.setup_tracing()` flips from no-op to
+# OTLP/HTTP on boot. No code changes required to enable — overlay only.
+#
+# Tear down:
+#   docker compose -f docker-compose.yml -f docker-compose.otel.yml down
+#
+# The collector config (`otel/collector-config.yaml`) is mounted from
+# the repo so it's reproducible and version-controlled.
+
+services:
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.110.0
+    container_name: pennycore-otel-collector
+    restart: unless-stopped
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel/collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4318:4318"   # OTLP HTTP — what context-engine + orchestrator emit to
+      - "4317:4317"   # OTLP gRPC — kept open in case a future SDK swap uses it
+      - "8889:8889"   # Prometheus-format scrape endpoint (Day-32 demo target)
+    depends_on:
+      - jaeger
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62
+    container_name: pennycore-jaeger
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"  # Jaeger UI — http://localhost:16686
+      - "14250:14250"  # Jaeger gRPC (collector → jaeger ingest)
+
+  context_engine:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: pennycore-context-engine
+      OTEL_TRACES_EXPORTER: otlp
+
+  orchestrator:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: pennycore-orchestrator
+      OTEL_TRACES_EXPORTER: otlp

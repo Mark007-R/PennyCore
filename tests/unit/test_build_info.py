@@ -27,12 +27,14 @@ def test_build_info_dev_mode_when_env_unset(monkeypatch) -> None:
     monkeypatch.delenv("PENNYCORE_BUILD_DATE", raising=False)
     monkeypatch.delenv("PENNYCORE_IMAGE_VERSION", raising=False)
     info = build_info_mod.build_info()
-    assert info == {
-        "git_sha": "unknown",
-        "build_date": "unknown",
-        "image_version": "unknown",
-        "mode": "dev",
-    }
+    # Day 30 added `tracing_mode` — assert on the load-bearing fields
+    # only so the test doesn't break next time we add a self-describe
+    # field.
+    assert info["git_sha"] == "unknown"
+    assert info["build_date"] == "unknown"
+    assert info["image_version"] == "unknown"
+    assert info["mode"] == "dev"
+    assert "tracing_mode" in info
 
 
 def test_build_info_prod_mode_when_all_three_env_vars_set(monkeypatch) -> None:
@@ -63,12 +65,10 @@ def test_build_info_empty_string_env_treated_as_unset(monkeypatch) -> None:
     monkeypatch.setenv("PENNYCORE_BUILD_DATE", "  ")
     monkeypatch.setenv("PENNYCORE_IMAGE_VERSION", "")
     info = build_info_mod.build_info()
-    assert info == {
-        "git_sha": "unknown",
-        "build_date": "unknown",
-        "image_version": "unknown",
-        "mode": "dev",
-    }
+    assert info["git_sha"] == "unknown"
+    assert info["build_date"] == "unknown"
+    assert info["image_version"] == "unknown"
+    assert info["mode"] == "dev"
 
 
 def test_context_engine_info_endpoint(monkeypatch) -> None:

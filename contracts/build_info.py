@@ -1,4 +1,4 @@
-"""Build-metadata surface (Day 29, Phase 6).
+"""Build-metadata surface (Day 29, Phase 6; tracing mode added Day 30).
 
 `Dockerfile.prod` bakes the git SHA + build date into image labels AND
 into env vars (`PENNYCORE_GIT_SHA`, `PENNYCORE_BUILD_DATE`,
@@ -47,9 +47,22 @@ def build_info() -> dict[str, Any]:
     built = os.getenv("PENNYCORE_BUILD_DATE", "").strip() or "unknown"
     version = os.getenv("PENNYCORE_IMAGE_VERSION", "").strip() or "unknown"
     is_prod = all(v != "unknown" for v in (sha, built, version))
+
+    # Day-30 — surface the active tracing mode so `/info` answers
+    # "is this instance actually exporting spans?" without a second
+    # round-trip. Lazy import to keep `contracts.build_info` free of
+    # a hard OTel dependency at module load.
+    try:
+        from contracts.observability import get_tracing_mode
+
+        tracing_mode = get_tracing_mode()
+    except Exception:  # pragma: no cover — observability missing is OK
+        tracing_mode = None
+
     return {
         "git_sha": sha,
         "build_date": built,
         "image_version": version,
         "mode": "prod" if is_prod else "dev",
+        "tracing_mode": tracing_mode,
     }
