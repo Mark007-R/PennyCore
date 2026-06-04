@@ -52,6 +52,7 @@ from context_engine.slow_call_queue import (
 from context_engine.repository import EventRepository, InMemoryEventRepository
 from context_engine.safety import sanitize_for_prompt
 from context_engine.safety.prompt_injection import has_injection_markers
+from contracts.build_info import build_info
 
 # `.env` lives at the project root and is loaded once at import time.
 load_dotenv()
@@ -253,6 +254,19 @@ def root() -> dict[str, Any]:
 @app.get("/healthz", tags=["health"])
 def healthz() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/info", tags=["meta"])
+def info() -> dict[str, Any]:
+    """Self-describe the running container (Day 29 surface).
+
+    Surfaces build metadata baked in by `Dockerfile.prod` — git SHA,
+    build date, image version. Operators on fly.io / railway hit this
+    to confirm which commit is actually running after a deploy. Dev
+    containers respond with ``mode="dev"`` and ``"unknown"`` values
+    so a caller doesn't mistake a local boot for a deployed image.
+    """
+    return {"service": "context-engine", **build_info()}
 
 
 @app.get("/deferred/pending", tags=["operations"])

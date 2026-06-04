@@ -2,6 +2,7 @@
 
 # Secrets — defence in depth on top of .gitignore.
 .env
+.env.prod
 takehome/*/.env
 *.key
 *.pem

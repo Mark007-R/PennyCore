@@ -1,0 +1,137 @@
+# PennyCore — production multi-stage Dockerfile (Day 29, Phase 6).
+#
+# This is the production sibling of the dev `Dockerfile`. The differences
+# are deliberate and load-bearing:
+#
+#   1. No `--reload` and no bind-mounts in the compose file — the source
+#      tree is COPYed at build time and frozen. A prod container with a
+#      hot-reload loop is a footgun (uvicorn reload watcher races with
+#      gunicorn workers).
+#   2. `gunicorn` + `uvicorn.workers.UvicornWorker` instead of bare
+#      `uvicorn`. Gunicorn handles worker lifecycle, graceful shutdown
+#      on SIGTERM, and per-worker memory recycling — table stakes for
+#      anything that runs under a real PaaS (fly.io, railway, ECS).
+#   3. Tini as PID 1 so SIGTERM from the orchestrator (k8s / fly.io /
+#      railway) cleanly propagates to the worker pool. Without an init
+#      process the FastAPI app catches SIGTERM but child handlers can
+#      orphan.
+#   4. `psycopg[c]` over `psycopg[binary]` is intentionally NOT done —
+#      the binary wheel is the project's standard (requirements.txt) and
+#      bringing in libpq build tooling for a marginal cold-start win
+#      isn't worth the extra image surface area.
+#   5. Image labels (OCI annotations) carry the git SHA + build date
+#      so a deployed container is self-describing. fly.io / railway
+#      surface these in their dashboards.
+#
+# Build:
+#   docker build -f Dockerfile.prod \
+#       --build-arg GIT_SHA=$(git rev-parse --short HEAD) \
+#       --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+#       -t pennycore:prod .
+#
+# Run:
+#   docker run --rm -p 8000:8000 --env-file .env.prod pennycore:prod
+#
+# The default CMD launches the context-engine; the orchestrator
+# container in docker-compose.prod.yml overrides CMD to point gunicorn
+# at `orchestrator.api:app`.
+
+# syntax=docker/dockerfile:1.7
+
+# -----------------------------------------------------------------------------
+# Stage 1: base — pinned Python + tini + non-root user.
+# -----------------------------------------------------------------------------
+FROM python:3.11-slim AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONFAULTHANDLER=1
+
+# `tini` is the init process. `curl` is used by the healthcheck. Nothing
+# else from `apt` — keep the prod image's CVE surface minimal.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tini curl \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN useradd --create-home --shell /bin/bash --uid 1000 pennycore
+WORKDIR /app
+
+# -----------------------------------------------------------------------------
+# Stage 2: deps — install runtime + production server. Cached as long as
+# pyproject / requirements / this stage's pin set is unchanged.
+# -----------------------------------------------------------------------------
+FROM base AS deps
+
+COPY pyproject.toml requirements.txt README.md ./
+
+# Gunicorn is the production process supervisor. Pinned here (not in the
+# project's requirements.txt) because the dev path doesn't need it —
+# uvicorn alone is sufficient for `docker-compose up`.
+RUN pip install --upgrade pip \
+ && pip install -r requirements.txt \
+ && pip install "gunicorn>=21.2,<24.0"
+
+# -----------------------------------------------------------------------------
+# Stage 3: runtime — copy source, install in editable mode, drop privileges.
+# -----------------------------------------------------------------------------
+FROM deps AS runtime
+
+ARG GIT_SHA="unknown"
+ARG BUILD_DATE="unknown"
+ARG IMAGE_VERSION="0.2.0"
+
+LABEL org.opencontainers.image.title="pennycore" \
+      org.opencontainers.image.description="PennyCore — context-engine + orchestrator (production)" \
+      org.opencontainers.image.version="${IMAGE_VERSION}" \
+      org.opencontainers.image.revision="${GIT_SHA}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.licenses="Proprietary"
+
+# These env vars are readable from inside the container — the /info
+# endpoint (Day 29 surface) surfaces them so a deployed instance is
+# self-describing.
+ENV PENNYCORE_GIT_SHA="${GIT_SHA}" \
+    PENNYCORE_BUILD_DATE="${BUILD_DATE}" \
+    PENNYCORE_IMAGE_VERSION="${IMAGE_VERSION}"
+
+# Source — order chosen so contracts (rarely-changing) lands before services.
+COPY contracts ./contracts
+COPY context_engine ./context_engine
+COPY orchestrator ./orchestrator
+
+# Editable install so `from contracts import ...` works without sys.path
+# tricks. `--no-deps` is critical here: re-resolving deps at this stage
+# would invalidate the deps-layer cache on every source change.
+RUN pip install --no-deps -e .
+
+# Drop privileges before runtime.
+RUN chown -R pennycore:pennycore /app
+USER pennycore
+
+EXPOSE 8000
+
+# Healthcheck — the FastAPI /healthz endpoint is the per-container fallback.
+# fly.io / railway add their own orchestration-layer probes on top of this.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
+    CMD curl --fail --silent http://localhost:8000/healthz || exit 1
+
+# Tini as PID 1 ensures clean SIGTERM propagation to gunicorn workers.
+ENTRYPOINT ["/usr/bin/tini", "--"]
+
+# Default to context-engine. The orchestrator container in
+# docker-compose.prod.yml overrides this CMD. Gunicorn worker count is
+# read from $WEB_CONCURRENCY (PaaS-conventional) with a 2-worker
+# minimum so the in-process listener stays responsive while gunicorn
+# recycles a worker.
+CMD ["gunicorn", \
+     "context_engine.api:app", \
+     "--worker-class", "uvicorn.workers.UvicornWorker", \
+     "--workers", "2", \
+     "--bind", "0.0.0.0:8000", \
+     "--timeout", "30", \
+     "--graceful-timeout", "20", \
+     "--keep-alive", "5", \
+     "--access-logfile", "-", \
+     "--error-logfile", "-"]

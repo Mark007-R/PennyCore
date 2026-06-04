@@ -1,0 +1,169 @@
+# PennyCore — production-shape compose file (Day 29, Phase 6).
+#
+# This file is the local rehearsal of the production deploy. It is
+# intentionally close to what fly.io / railway / ECS would orchestrate,
+# minus the cloud-side load balancer:
+#
+#   - Builds from Dockerfile.prod (gunicorn supervisor, tini PID 1).
+#   - No bind-mounts. The source tree inside the image is frozen at
+#     build time.
+#   - No uvicorn hot-reload flag. Workers are recycled by gunicorn,
+#     not by file watchers.
+#   - `restart: unless-stopped` on every service — matches the policy
+#     fly.io / railway use by default.
+#   - `WEB_CONCURRENCY` parameterises gunicorn workers per service so
+#     a hosted instance with 1 vCPU and a beefier 4 vCPU host both
+#     read the same compose file.
+#   - Postgres + Redis carry the same volumes/healthchecks as the dev
+#     compose, but the published-port mappings are commented out —
+#     prod only exposes the FastAPI surface.
+#   - `.env.prod` (NOT committed; documented in `.env.example.prod`)
+#     supplies the real keys.
+#
+# Boot:
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+#
+# Tear down:
+#   docker compose -f docker-compose.prod.yml down
+#
+# Smoke test once up:
+#   curl http://localhost:8001/info  # context-engine self-describes
+#   curl http://localhost:8001/readyz
+#   curl http://localhost:8002/readyz
+#
+# The `fly.io` deploy adapter in `scripts/deploy_fly.sh` mirrors the
+# environment shape below — anything added here MUST be replicated
+# in fly secrets via that script.
+
+services:
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: pennycore-postgres-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pennycore}
+      POSTGRES_USER: ${POSTGRES_USER:-pennycore}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env.prod}
+    # Production: do NOT expose postgres to the host. The service-network
+    # alias is all the app containers need. Uncomment locally only if
+    # you need a psql shell from the host for diagnostic work.
+    # ports:
+    #   - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+      - ./migrations/versions:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pennycore} -d ${POSTGRES_DB:-pennycore}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: pennycore-redis-prod
+    restart: unless-stopped
+    # Same reasoning as Postgres — no host port mapping in prod.
+    # ports:
+    #   - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data_prod:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  context_engine:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+      args:
+        # Override these at build time. The defaults make the build
+        # succeed without git context (e.g. inside a fresh CI runner).
+        GIT_SHA: ${GIT_SHA:-unknown}
+        BUILD_DATE: ${BUILD_DATE:-unknown}
+        IMAGE_VERSION: ${IMAGE_VERSION:-0.2.0}
+    image: pennycore:prod
+    container_name: pennycore-context-engine-prod
+    restart: unless-stopped
+    # The Dockerfile CMD already points at context_engine.api:app — no
+    # override needed here. Worker count is per-service so the
+    # orchestrator can run hotter (decision pipeline is the latency
+    # bottleneck on a real workload).
+    environment:
+      WEB_CONCURRENCY: ${CONTEXT_ENGINE_WORKERS:-2}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://pennycore:${POSTGRES_PASSWORD}@postgres:5432/pennycore}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      MOCK_LLM: ${MOCK_LLM:-false}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AZURE_API_KEY: ${AZURE_API_KEY:-}
+      AZURE_ENDPOINT: ${AZURE_ENDPOINT:-}
+      AZURE_API_VERSION: ${AZURE_API_VERSION:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - "${CONTEXT_ENGINE_PORT:-8001}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
+        BUILD_DATE: ${BUILD_DATE:-unknown}
+        IMAGE_VERSION: ${IMAGE_VERSION:-0.2.0}
+    image: pennycore:prod
+    container_name: pennycore-orchestrator-prod
+    restart: unless-stopped
+    # Override the image's default CMD to launch the orchestrator app.
+    # Gunicorn flags mirror the Dockerfile's context-engine CMD so the
+    # two services have identical lifecycle behavior.
+    command:
+      - gunicorn
+      - orchestrator.api:app
+      - --worker-class
+      - uvicorn.workers.UvicornWorker
+      - --workers
+      - "${ORCHESTRATOR_WORKERS:-3}"
+      - --bind
+      - 0.0.0.0:8000
+      - --timeout
+      - "30"
+      - --graceful-timeout
+      - "20"
+      - --keep-alive
+      - "5"
+      - --access-logfile
+      - "-"
+      - --error-logfile
+      - "-"
+    environment:
+      WEB_CONCURRENCY: ${ORCHESTRATOR_WORKERS:-3}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://pennycore:${POSTGRES_PASSWORD}@postgres:5432/pennycore}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      MOCK_LLM: ${MOCK_LLM:-false}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AZURE_API_KEY: ${AZURE_API_KEY:-}
+      AZURE_ENDPOINT: ${AZURE_ENDPOINT:-}
+      AZURE_API_VERSION: ${AZURE_API_VERSION:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - "${ORCHESTRATOR_PORT:-8002}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data_prod:
+  redis_data_prod:
