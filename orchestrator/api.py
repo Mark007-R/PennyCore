@@ -47,6 +47,8 @@ from fastapi import FastAPI, HTTPException, Query, Response, status
 from context_engine.event_bus import InMemoryEventBus
 from context_engine.llm import get_client
 from contracts.actions import Action
+from contracts.build_info import build_info
+from contracts.observability import setup_tracing
 from orchestrator.approval_queue import (
     ApprovalNotFoundError,
     ApprovalStateError,
@@ -72,6 +74,12 @@ from orchestrator.planner import (
 )
 
 load_dotenv()
+
+# Day-30 — configure OpenTelemetry tracing once at module load. Mirrors
+# the context-engine. No-op unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set
+# (the `docker-compose.otel.yml` overlay points it at the OTLP
+# collector that fans out to Jaeger).
+setup_tracing("pennycore-orchestrator")
 
 
 # ----------------------------------------------------------------------------
@@ -208,6 +216,19 @@ def root() -> dict[str, Any]:
 def healthz() -> dict[str, str]:
     """Liveness probe — the process is up. No external dependencies probed."""
     return {"status": "ok"}
+
+
+@app.get("/info", tags=["meta"])
+def info() -> dict[str, Any]:
+    """Self-describe the running container (Day 29 surface).
+
+    Surfaces the build metadata baked in by `Dockerfile.prod` so a
+    deployed instance can identify itself — git SHA, build date, image
+    version. Dev containers respond with ``mode="dev"`` and the
+    placeholder ``"unknown"`` values so a caller can distinguish a
+    local boot from a real prod image.
+    """
+    return {"service": "orchestrator", **build_info()}
 
 
 @app.get("/readyz", tags=["health"])

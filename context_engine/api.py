@@ -52,9 +52,18 @@ from context_engine.slow_call_queue import (
 from context_engine.repository import EventRepository, InMemoryEventRepository
 from context_engine.safety import sanitize_for_prompt
 from context_engine.safety.prompt_injection import has_injection_markers
+from contracts.build_info import build_info
+from contracts.observability import setup_tracing
 
 # `.env` lives at the project root and is loaded once at import time.
 load_dotenv()
+
+# Day-30 — configure OpenTelemetry tracing once at module load. No-ops
+# unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set in the environment (the
+# `docker-compose.otel.yml` overlay sets it to the collector). Spans
+# are registered everywhere in the codebase via `contracts.observability`
+# regardless; this call just decides whether they're exported.
+setup_tracing("pennycore-context-engine")
 
 
 app = FastAPI(
@@ -253,6 +262,19 @@ def root() -> dict[str, Any]:
 @app.get("/healthz", tags=["health"])
 def healthz() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/info", tags=["meta"])
+def info() -> dict[str, Any]:
+    """Self-describe the running container (Day 29 surface).
+
+    Surfaces build metadata baked in by `Dockerfile.prod` — git SHA,
+    build date, image version. Operators on fly.io / railway hit this
+    to confirm which commit is actually running after a deploy. Dev
+    containers respond with ``mode="dev"`` and ``"unknown"`` values
+    so a caller doesn't mistake a local boot for a deployed image.
+    """
+    return {"service": "context-engine", **build_info()}
 
 
 @app.get("/deferred/pending", tags=["operations"])

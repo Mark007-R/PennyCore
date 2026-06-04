@@ -11,6 +11,7 @@ __pycache__/
 
 # Secrets — NEVER commit
 .env
+.env.prod
 takehome/*/.env
 *.key
 *.pem

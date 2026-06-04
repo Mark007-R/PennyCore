@@ -29,6 +29,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from context_engine.event_bus import EventBus, channel_for, envelope_for
 from context_engine.repository import EventRepository
 from contracts import ChannelType, Event, EventType
+from contracts.observability import trace_span
 
 
 def new_event_id() -> str:
@@ -119,8 +120,26 @@ def ingest_event(
     MVP we accept that a bus failure shows up as an inconsistency the
     Day-19 idempotency tests will exercise (re-POSTing the same key
     re-publishes nothing because the event is already stored).
+
+    Day-30 observability: every successful ingest emits a `pennycore.
+    ingest_event` span carrying tenant_id, event_id, channel, event_type,
+    and the dedup-keyed `created` flag. The span is the entry point of
+    the distributed trace that the orchestrator's decision span
+    continues — `pennycore.event_id` is the join key in Jaeger.
     """
-    stored, created = repo.upsert_event(event)
-    if created:
-        bus.publish(channel_for(stored.tenant_id), envelope_for(stored))
-    return IngestionResult(event=stored, created=created)
+    with trace_span(
+        "pennycore.ingest_event",
+        tenant_id=event.tenant_id,
+        attributes={
+            "pennycore.channel": event.channel_code,
+            "pennycore.event_type": event.event_type,
+            "pennycore.idempotency_key": event.idempotency_key,
+        },
+    ) as span:
+        stored, created = repo.upsert_event(event)
+        span.set_attribute("pennycore.event_id", stored.id)
+        span.set_attribute("pennycore.created", created)
+        if created:
+            bus.publish(channel_for(stored.tenant_id), envelope_for(stored))
+            span.set_attribute("pennycore.bus_published", True)
+        return IngestionResult(event=stored, created=created)

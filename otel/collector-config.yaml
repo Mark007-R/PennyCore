@@ -1,0 +1,62 @@
+# OpenTelemetry Collector configuration for the PennyCore OTel overlay
+# (Day 30, Phase 6).
+#
+# Single fan-out collector: accept OTLP from the apps, forward to Jaeger
+# for span visualisation + expose a Prometheus scrape endpoint for the
+# Day-32 demo UI's "live trace volume" panel. Receiver + exporter
+# choices follow the standard otel-collector-contrib reference layout.
+#
+# In production this is where extra exporters (Tempo, Honeycomb, Sentry,
+# DataDog) would land WITHOUT changes to PennyCore code — the apps
+# always emit to the collector, never directly to a vendor.
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  batch:
+    # Standard batching. 1s timeout balances visible-in-Jaeger latency
+    # against export overhead for our low-volume local demo runs.
+    timeout: 1s
+    send_batch_size: 256
+
+  # Drop spans for the meta endpoints — they're noise during a demo
+  # ("/healthz called 100 times" doesn't help anyone read a trace).
+  filter/noise:
+    error_mode: ignore
+    traces:
+      span:
+        - 'attributes["http.target"] == "/healthz"'
+        - 'attributes["http.target"] == "/readyz"'
+        - 'attributes["http.target"] == "/info"'
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+  # Debug exporter to stderr — used while iterating locally.
+  debug:
+    verbosity: basic
+
+  # Prometheus scrape endpoint surfaces collector's own metrics +
+  # request-rate-per-span-name from the apps. The Day-32 demo UI hits
+  # this for its "spans per minute" panel.
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [filter/noise, batch]
+      exporters: [otlp/jaeger, debug]
+  telemetry:
+    logs:
+      level: info

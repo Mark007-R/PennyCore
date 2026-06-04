@@ -43,6 +43,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 from contracts.actions import Action, ActionStatus, ActionType
+from contracts.observability import trace_span
 
 _LOG = logging.getLogger(__name__)
 
@@ -194,27 +195,45 @@ class ActionExecutor:
         exception, the original exception propagates — the
         DecisionPipeline catches both and writes the appropriate
         audit row.
+
+        Day-30 observability: every execute call is one span
+        (`pennycore.executor.execute`) carrying tenant_id, action_id,
+        action_type, and (on success) the executed-at timestamp. The
+        span sits inside the decision_pipeline's handle_proposal span
+        so a Jaeger trace makes the "event → decision → execution"
+        flow visible end-to-end. Failed executions show as red spans
+        with `error.type` set per the OTel semantic convention.
         """
-        handler = self._table.get(action.action_type)
-        if handler is None:
-            raise ExecutionError(
-                f"no executor registered for action_type={action.action_type.value!r}"
-            )
+        with trace_span(
+            "pennycore.executor.execute",
+            tenant_id=action.tenant_id,
+            attributes={
+                "pennycore.action_id": action.id,
+                "pennycore.action_type": action.action_type.value,
+                "pennycore.event_id": action.event_id,
+            },
+        ) as span:
+            handler = self._table.get(action.action_type)
+            if handler is None:
+                raise ExecutionError(
+                    f"no executor registered for action_type={action.action_type.value!r}"
+                )
 
-        result = handler(action)
-        if not isinstance(result, dict):
-            raise ExecutionError(
-                f"executor for {action.action_type.value!r} returned "
-                f"{type(result).__name__}, expected dict"
-            )
+            result = handler(action)
+            if not isinstance(result, dict):
+                raise ExecutionError(
+                    f"executor for {action.action_type.value!r} returned "
+                    f"{type(result).__name__}, expected dict"
+                )
 
-        now = datetime.now(timezone.utc)
-        merged_payload = {**action.payload, "_executed_payload": result}
-        return action.model_copy(
-            update={
-                "status": ActionStatus.EXECUTED,
-                "executed_at": now,
-                "updated_at": now,
-                "payload": merged_payload,
-            }
-        )
+            now = datetime.now(timezone.utc)
+            merged_payload = {**action.payload, "_executed_payload": result}
+            span.set_attribute("pennycore.executed", True)
+            return action.model_copy(
+                update={
+                    "status": ActionStatus.EXECUTED,
+                    "executed_at": now,
+                    "updated_at": now,
+                    "payload": merged_payload,
+                }
+            )
