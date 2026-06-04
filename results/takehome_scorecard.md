@@ -143,3 +143,33 @@ respectively, and their integration tests are part of the green suite).
 | orchestrator | 6/6 | unchanged scenarios; +1 rubric on D8 (policy expressiveness) | Day 18 (Phase 3 four-engine comparison locks D8 = 2/2) |
 
 The scenarios passing is a binary; the rubric estimate (29-32 for context-engine, 38-44 for orchestrator) is what moves with future work.
+
+
+## Phase 6 weekly re-validation (2026-06-04, end of Day 32)
+
+Phase 6 (Days 29-32 — production polish) shipped four additive surfaces:
+production Docker + deploy script, OpenTelemetry instrumentation, Streamlit
+approver dashboard, Streamlit demo scenario UI. **None of these changed the
+takehome adapter call paths**, so the scorecard must hold; this row is the
+explicit verification.
+
+| Evaluator | Day-32 result | Day-26 baseline | Delta | Status |
+|-----------|---------------|------------------|-------|--------|
+| `takehome/context-engine/evaluate.py` | **5/6 raw** = 5/5 non-LLM (scenario 6 LLM-gated; 401 on the placeholder Azure key, same as Day 26) | 5/5 non-LLM | 0 | ✅ held |
+| `takehome/orchestrator/evaluate.py` | **6/6 scenarios passed** | 6/6 | 0 | ✅ held |
+
+**Run command:** `bash scripts/run_takehome_evals.sh` from repo root.
+
+**Adapter modules touched in Phase 6:** none. The takehome `evaluate.py`
+files remain unmodified (rule 17 — invariant verified by pre-commit hook).
+The adapter modules `takehome/context-engine/memory_system.py` and
+`takehome/orchestrator/orchestrator_impl.py` are untouched since Day 26;
+Phase-6 work landed entirely in `Dockerfile.prod`,
+`docker-compose.prod.yml`, `contracts/observability.py`,
+`context_engine/api.py` (`/info` + setup_tracing), `context_engine/ingestion.py`
+(span wrap), `orchestrator/decision_pipeline.py` (span wrap),
+`orchestrator/executor.py` (span wrap), `orchestrator/api.py` (`/info` +
+setup_tracing), `ui/`, `tests/unit/`.
+
+**Suite growth:** 766 (Day-28 wrap) → 845 (Day-32 wrap) = +79 tests.
+**Next scorecard checkpoint:** Day 35 (project complete final pass).
