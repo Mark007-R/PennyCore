@@ -52,37 +52,57 @@ These are the results that drive the project's narrative. Numbers in
 `results/metrics.json`, deep dive in
 [docs/POLICIES.md](docs/POLICIES.md) and the Phase 3/5 reports.
 
-### Context-engine — retrieval strategy
+> **Measurement honesty.** The whole project ran in `MOCK_LLM` mode
+> (no live LLM key worked during the benchmark runs). Token counts,
+> latency, correctness, and cost-arithmetic are **computed from real
+> execution on the real 200-pair / 200-tuple datasets**. Quality
+> scores are a **mock-proxy token-overlap judge**, not a real
+> LLM-as-judge — they reward verbatim text, so compression strategies
+> score lower than they would under a real judge (noted in the results
+> files' `proxy_bias_note`). Numbers below are the actual values in
+> `results/phase3_day18_consolidated.json` + `results/phase5_*.json`.
 
-| Strategy | Tokens | Latency p50 | Quality (LLM-judge) | Verdict |
-|----------|--------|-------------|---------------------|---------|
-| naive (dump everything) | 12,800 avg | 1.4 s | 4.1 / 5 | baseline |
-| recency-only | 4,200 avg | 0.18 s | 3.8 / 5 | cheap, blind to old context |
-| semantic-only | 3,900 avg | 0.21 s | 4.0 / 5 | better recall, no recency anchor |
-| summarized | 3,100 avg | 0.32 s | 3.6 / 5 | loses specificity |
-| **hybrid (champion)** | **2,480 avg** | **0.19 s** | **4.2 / 5** | **wins on quality AND cost** |
+### Context-engine — retrieval strategy (200 pairs)
 
-**Hybrid uses 41% fewer brief tokens than recency at parity fact recall
-on 183 of 200 pairs**, while improving LLM-judged quality. The
-counterintuitive part: summary-only loses; the champion blends recency
-(last 24h) + semantic (older) + summary (cold tail). Phase 5 re-ran
-this head-to-head against the dump-everything baseline; cost-per-100q
-drops ~6× at parity quality.
+| Strategy | Brief tokens (mean) | Quality (mock-proxy, 1–5) |
+|----------|--------------------:|--------------------------:|
+| naive (dump everything) | 1,449.6 | 3.04 |
+| recency-only | 1,421.7 | 3.04 |
+| semantic-only | 1,421.7 | 3.04 |
+| summarized | 211.0 | 1.69 |
+| **hybrid (champion)** | **838.4** | **2.91** |
 
-### Orchestrator — policy engine
+**Hybrid uses 42% fewer brief tokens than naive and 41% fewer than
+recency, at parity fact recall on 183 of 200 pairs.** Under the
+mock-proxy judge — which rewards verbatim text — hybrid's quality
+(2.91) sits just *below* the verbatim strategies (3.04) because it
+compresses the cold tail; the champion is chosen on the **cost /
+quality-per-token frontier** (hybrid 3.47 quality-per-1K-tokens vs
+recency 2.13, +63%), not on raw proxy quality. Phase 5 re-scored the
+fact-bearing subset with the same proxy: **naive and hybrid tie at
+3.9/5**, while hybrid costs **24% less per 100 queries** ($0.585 vs
+$0.769) — but is **slightly slower** at p50 (0.48 ms vs 0.24 ms),
+since it does more retrieval work than a flat dump. The honest
+headline is *cheaper at tied quality*, not "faster and better".
 
-| Strategy | Correctness | Latency p50 | Cost / 100 dec | Auditability | Maintainability |
-|----------|------------|-------------|----------------|--------------|-----------------|
-| naive LLM | 54% | ~11 ms | $0.111 | 2/5 | 1/5 |
-| python_rules | 100% | 1.8 µs | $0 | 4/5 | 3/5 |
-| **declarative YAML (champion)** | **100%** | **0.6 µs** | **$0** | **5/5** | **5/5** |
-| llm_judge | 100% | ~11 ms | $0.111 | 4/5 | 3/5 |
+### Orchestrator — policy engine (200 tuples)
 
-**The "best practice" (LLM-as-judge for compliance decisions) came in
-last on cost and tied on correctness with the declarative champion at
-~17,000× less cost.** Naive LLM fails entirely on reject decisions
-(0/5 on the `reject` scenario class) — useful headline for the project's
-post-game write-up.
+| Strategy | Correctness | Latency p50 (µs, mock/local) | Cost/100 (mock) | Cost/100 (prod proj.) | Auditability | Maintainability | LLM calls |
+|----------|------------:|------------------------------:|----------------:|----------------------:|-------------:|----------------:|----------:|
+| naive LLM | 54% | 1.8 | $0.139 | $0.57 | 2/5 | 4/5 | 200 |
+| python_rules | 100% | 0.7 | $0 | $0 | 3/5 | 2/5 | 0 |
+| **declarative YAML (champion)** | **100%** | **0.6** | **$0** | **$0** | **5/5** | **5/5** | **0** |
+| llm_judge | 100% | 6.7 | $0.111 | $0.57 | 4/5 | 4/5 | 200 |
+
+**Declarative ties the LLM engines on correctness (100%) at zero
+marginal cost** — $0 vs ~$0.57 per 100 decisions *projected* under real
+Sonnet pricing (mock-run payload cost was $0.111–0.139), and ~11×
+lower local decision latency (0.6 vs 6.7 µs). **Naive-LLM collapses to
+54% and misses all 5 `reject` scenarios (0/5)** — the silent
+auto-execute failure regulators audit for. Latencies are mock-mode
+**local compute only** (no network round-trip); a real LLM call would
+add unmeasured network latency, so the defensible axes here are
+**correctness and cost**, not latency.
 
 ## Hardening (Phase 4)
 

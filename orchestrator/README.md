@@ -47,13 +47,15 @@ benchmark can swap them cleanly.
 
 - **`policy/declarative.py`** — **champion**. YAML / dict rules per
   tenant: `allow:`, `require_approval:`, `reject:`, `require_quorum:`.
-  100% correctness on 200 scenarios, 0.6 µs p50, $0 per 100 dec,
-  5/5 auditability + maintainability.
+  100% correctness on 200 scenarios, 0.6 µs local p50, $0 marginal
+  cost, 5/5 auditability + maintainability.
 - **`policy/python_rules.py`** — same correctness as declarative but
   worse maintainability (compliance team can't edit Python).
 - **`policy/llm_judge.py`** — LLM evaluates "auto-execute or queue?"
-  with structured output. Ties declarative on correctness but costs
-  ~17,000× more per decision and adds ~11 ms latency.
+  with structured output. Ties declarative on correctness (100%) but
+  carries a marginal LLM cost — $0.111/100 in the mock run, ~$0.57/100
+  projected — vs $0 for declarative. (Latencies are mock-mode local
+  compute, not real network calls.)
 - **`policy/naive.py`** — baseline: "ask the LLM in plain English what
   to do." 54% correctness; fails entirely on `reject` scenarios.
 

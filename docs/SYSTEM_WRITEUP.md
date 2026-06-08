@@ -70,63 +70,91 @@ row (OWASP API1:2023). Full picture, with diagrams, in
 
 ---
 
-## The four headlines
+## Measurement honesty (read this before the numbers)
 
-### 1. Hybrid retrieval beats every single-strategy approach on quality AND cost
+The benchmarks ran in `MOCK_LLM` mode — no live LLM key worked during
+the runs. What that means for the numbers below:
+
+- **Real, computed from execution on the real datasets:** brief token
+  counts, retrieval/decision latency, correctness vs. expected-action
+  sets, and cost (real token counts × published Sonnet prices). The
+  200-pair retrieval set is 150 MultiWOZ-derived + 50 synthetic; the
+  200-tuple policy set is synthetic across three tenants.
+- **Mock-proxy, not a real LLM judge:** the quality scores are a
+  deterministic token-overlap recall heuristic. It rewards verbatim
+  text, so compression strategies score *lower* than a real judge
+  would rate them (the results files carry an explicit
+  `proxy_bias_note`).
+- **Latency is local compute only** for the policy engines — the
+  LLM-backed engines never made a network call, so their µs latencies
+  are local overhead, not real end-to-end LLM latency.
+
+Every number below is the actual value in
+`results/phase3_day18_consolidated.json` and `results/phase5_*.json`.
+
+## The headlines
+
+### 1. Hybrid retrieval wins on the cost / quality-per-token frontier — cheaper at tied quality, not "faster and better"
 
 The Phase-3 retrieval bake-off ran five strategies against 200
-(customer-history, query, ground-truth-answer) pairs. The
-counterintuitive result is which strategy *lost*: semantic-only —
-the "best practice" everyone reaches for first — finished third,
-beaten by recency-only on cost and by the hybrid on every axis.
+(customer-history, query, ground-truth-answer) pairs.
 
-| Strategy | Brief tokens | p50 latency | Quality (LLM-judge) | Verdict |
-|----------|--------------|-------------|---------------------|---------|
-| naive (dump everything) | 12,800 avg | 1.4 s | 4.1 / 5 | the baseline most startups still ship |
-| recency-only | 4,200 avg | 0.18 s | 3.8 / 5 | cheap, blind to old context |
-| semantic-only | 3,900 avg | 0.21 s | 4.0 / 5 | better recall, no recency anchor |
-| summarized | 3,100 avg | 0.32 s | 3.6 / 5 | loses specificity |
-| **hybrid (champion)** | **2,480 avg** | **0.19 s** | **4.2 / 5** | **wins on quality AND cost** |
+| Strategy | Brief tokens (mean) | Quality (mock-proxy, 1–5) |
+|----------|--------------------:|--------------------------:|
+| naive (dump everything) | 1,449.6 | 3.04 |
+| recency-only | 1,421.7 | 3.04 |
+| semantic-only | 1,421.7 | 3.04 |
+| summarized | 211.0 | 1.69 |
+| **hybrid (champion)** | **838.4** | **2.91** |
 
 Hybrid is recency for the last 24 hours, semantic for older messages,
-and an LLM-summarised digest for the cold tail. **It uses 41% fewer
-brief tokens than recency-only at parity fact recall on 183 of 200
-pairs**, and the LLM-judge quality goes up by 0.4 vs. the dump-
-everything baseline. Phase 5 re-ran this head-to-head: cost-per-100q
-drops ~6× at parity quality. Detailed numbers in
-[`results/phase3_context_engine_results.json`](../results/phase3_context_engine_results.json)
-and the per-bucket charts in `results/phase3_context_engine_analysis_*.png`.
+and a summarised digest for the cold tail. **It uses 42% fewer brief
+tokens than naive and 41% fewer than recency, at parity fact recall on
+183 of 200 pairs.** Note the honest wrinkle: under the mock-proxy
+judge (which rewards verbatim text) hybrid's quality (2.91) sits just
+*below* the verbatim strategies (3.04), because it compresses. The
+champion is chosen on the **quality-per-1K-tokens** frontier — hybrid
+3.47 vs recency 2.13 (+63%) — not on raw proxy quality. Phase 5
+re-scored the fact-bearing subset: **naive and hybrid tie at 3.9/5**,
+hybrid costs **24% less per 100 queries** ($0.585 vs $0.769), but is
+**slightly slower** at p50 (0.48 ms vs 0.24 ms) because it does more
+retrieval work. Numbers in
+[`results/phase5_naive_vs_champion_context_engine.json`](../results/phase5_naive_vs_champion_context_engine.json).
 
-### 2. Declarative YAML beat LLM-as-judge for policy decisions by ~17,000× on cost — at the same correctness
+### 2. Declarative YAML matches LLM-as-judge correctness at zero marginal cost
 
 The Phase-3 policy bake-off ran four engines against 200
-(event, tenant, expected-action) tuples. Tenants spanned Bank A
-(permissive — auto-text allowed), Bank B (strict — approval required
-for everything), Bank C (in between). Same expected-action set; same
-input.
+(event, tenant, expected-action) tuples across three tenants
+(permissive / strict / mixed). Same expected-action set; same input.
 
-| Strategy | Correctness | p50 latency | Cost / 100 dec | Auditability | Maintainability |
-|----------|-------------|-------------|----------------|--------------|-----------------|
-| naive LLM | 54% | ~11 ms | $0.111 | 2/5 | 1/5 |
-| python_rules | 100% | 1.8 µs | $0 | 4/5 | 3/5 |
-| **declarative YAML (champion)** | **100%** | **0.6 µs** | **$0** | **5/5** | **5/5** |
-| llm_judge | 100% | ~11 ms | $0.111 | 4/5 | 3/5 |
+| Strategy | Correctness | p50 latency (µs, mock/local) | Cost/100 (mock) | Cost/100 (prod proj.) | Auditability | Maintainability |
+|----------|------------:|------------------------------:|----------------:|----------------------:|-------------:|----------------:|
+| naive LLM | 54% | 1.8 | $0.139 | $0.57 | 2/5 | 4/5 |
+| python_rules | 100% | 0.7 | $0 | $0 | 3/5 | 2/5 |
+| **declarative YAML (champion)** | **100%** | **0.6** | **$0** | **$0** | **5/5** | **5/5** |
+| llm_judge | 100% | 6.7 | $0.111 | $0.57 | 4/5 | 4/5 |
 
-The naive-LLM baseline fails entirely on the `reject` decision class
-(0/5) — it hallucinates a "let me help you" action instead of
-refusing. The two LLM strategies tie the declarative champion on
-correctness for the well-stated tenants, but they cost ~$0.11 per
-100 decisions vs. **$0** for YAML, run ~18,000× slower (11 ms vs.
-0.6 µs), and lose on auditability and maintainability — a compliance
-team can edit a YAML file without redeploying code; they can't edit
-a model. Detailed numbers in
-[`results/phase3_orchestrator_results.json`](../results/phase3_orchestrator_results.json),
+The naive-LLM baseline drops to **54% correctness and misses all 5
+`reject` scenarios (0/5)** — it routes high-risk actions to
+auto-execute, the silent-execution failure regulators audit for. The
+two LLM engines tie the declarative champion on correctness for the
+well-stated tenants, but they carry a **marginal LLM cost** — $0 for
+declarative vs ~$0.57 per 100 decisions *projected* under real Sonnet
+pricing (mock-run payload cost was $0.111–0.139) — and lose on
+auditability and maintainability (a compliance team edits a YAML file
+without a redeploy; they can't edit a model). Local decision latency
+is ~11× lower (0.6 vs 6.7 µs), but that's local compute, not network.
+Numbers in
+[`results/phase3_day18_consolidated.json`](../results/phase3_day18_consolidated.json),
 narrative in [`docs/POLICIES.md`](POLICIES.md).
 
-This is the result the project is most willing to defend: **the
-"best practice" of LLM-as-judge for compliance decisions is
-spectacularly wrong on cost, and it does not even buy you better
-correctness in exchange.**
+This is the result the project is most willing to defend: **for clear
+compliance policies, an LLM-as-judge is pure cost and audit overhead —
+it does not buy better correctness than a declarative table.** The
+right framing is "zero marginal cost vs a real per-decision LLM bill,"
+not a headline multiplier (declarative's cost is $0, so a ratio is
+undefined — earlier drafts wrongly cited "~17,000×"; that's been
+removed).
 
 ### 3. The Phase-4 hardening pass found two real bugs that wouldn't have surfaced any other way
 
@@ -162,20 +190,27 @@ The relevant counterfactual for an AI-infrastructure project isn't
 into the prompt and ask the LLM" approach that most AI startups
 still ship in 2026. Phase 5 ran both champions against that baseline.
 
-For retrieval: hybrid is ~6× cheaper per 100 queries than the dump-
-everything baseline at parity LLM-judge quality, and ~3× faster on
-end-to-end latency. The full curve is in
-[`results/phase5_naive_vs_champion_cost_by_bucket.png`](../results/phase5_naive_vs_champion_cost_by_bucket.png).
+For retrieval: hybrid is **24% cheaper** per 100 queries than the
+dump-everything baseline ($0.585 vs $0.769) at **tied** mock-proxy
+quality (3.9/5 both) — but **slightly slower** at p50 (the cost win
+comes from fewer tokens, not less work). The per-bucket cost curve is
+in
+[`results/phase5_naive_vs_champion_cost_by_bucket.png`](../results/phase5_naive_vs_champion_cost_by_bucket.png);
+the win widens on long histories (naive's very-long bucket costs
+$2.87/100q vs hybrid's $0.72).
 
-For policy: declarative-YAML correctness 100% vs. naive-LLM 54%, at
-$0 vs. $0.111 per 100 decisions. The frontier chart is in
+For policy: declarative-YAML correctness **100% vs. naive-LLM 54%**
+(a 46-point gap), at **$0 vs ~$0.57 per 100 decisions** projected. The
+frontier chart is in
 [`results/phase5_naive_vs_champion_orch_frontier.png`](../results/phase5_naive_vs_champion_orch_frontier.png).
 
-The headline I'd put on a LinkedIn post (and the post-generator
-ultimately did): *"I tested four policy-engine strategies on 200
-banking-action decisions. The 'best practice' (LLM-as-judge) tied
-the declarative champion on correctness, cost ~17,000× more, and
-lost on auditability. Here's why declarative wins for compliance."*
+The honest headline for a post: *"I tested four policy-engine
+strategies on 200 banking-action decisions. The 'best practice'
+(LLM-as-judge) tied the declarative table on correctness — but cost a
+real per-decision LLM bill, lost on auditability, and the naive
+'just ask the LLM' variant silently auto-executed every action it
+should have rejected. For clear compliance policies, declarative
+wins."*
 
 ---
 
