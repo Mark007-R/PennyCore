@@ -13,9 +13,11 @@ external scorecard at any time.
 
 ## Status
 
-**Day 34 of 35** — mid-Phase 7 (Ship, Days 33-35). Phases 1-6 squash-
-merged to `main`; Phase 7 PR (`phase/7-ship`) is open and accumulates
-the final docs + ship-prep commits. Day 35 closes out the project.
+**Day 35 of 35 — project complete.** All seven phases squash-merged
+to `main`. The build ran May 4 – June 7, 2026; this is the artefact
+it produced. The narrative close-out write-up — the engineering-blog-
+shaped public artefact — is at
+[`docs/SYSTEM_WRITEUP.md`](docs/SYSTEM_WRITEUP.md).
 
 - **Test suite:** 871 passed, 10 skipped (Postgres-gated; run with
   `DATABASE_URL` set).
@@ -163,7 +165,8 @@ provider dispatch → show the audit log.
   takehome scorecard, sample diagrams.
 - `notebooks/` — Phase-3 / Phase-5 analysis (read results JSON,
   render comparison tables and charts).
-- `docs/` — [SYSTEM_DESIGN](docs/SYSTEM_DESIGN.md) ·
+- `docs/` — [SYSTEM_WRITEUP](docs/SYSTEM_WRITEUP.md) (public
+  hiring-manager narrative, Day 35) · [SYSTEM_DESIGN](docs/SYSTEM_DESIGN.md) ·
   [API](docs/API.md) · [POLICIES](docs/POLICIES.md) ·
   [DEMO_SCENARIO](docs/DEMO_SCENARIO.md) ·
   [RESEARCH_SURVEY](docs/RESEARCH_SURVEY.md) ·

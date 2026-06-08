@@ -2023,6 +2023,78 @@
         "note": "unchanged; additive tests, no production-code paths touched"
       },
       "notes": "Phase 7 first day. Opened phase/7-ship branch + PR; added 26 tests targeting the four 0%-or-near LLM-adapter modules and the OTel noop branch. Postgres adapters (pg_repository.py 29%, pg_customer_repository.py 25%) remain Postgres-gated and tracked as a separate suite; in-memory equivalents at 92% / 95%."
+    },
+    {
+      "day": 34,
+      "phase": 7,
+      "date": "2026-06-06",
+      "component": "docs",
+      "feature": "architecture_md_plus_readme_refresh_plus_per_component_readmes_plus_demo_video_script",
+      "feature_shipped": true,
+      "tests_passing": 871,
+      "tests_added_today": 0,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset; PG-integration tests gated (unchanged across the project)",
+      "coverage_total_core_packages_pct": 90.0,
+      "takehome_score": {
+        "context_engine": "5/5 (unchanged - docs-only commit, no code-path change)",
+        "orchestrator": "6/6 (unchanged - docs-only commit, no code-path change)"
+      },
+      "notes": "Docs sweep day. ARCHITECTURE.md (NEW, root) with 7 mermaid diagrams (component map, sequence, isolation, idempotency, LLM dispatch, deployment, phase Gantt). README.md refresh from stale Day-21 state to Day-34 final state; both phase-champion tables inline; test count corrected 543 -> 871. Six per-component READMEs (context_engine, orchestrator, contracts, benchmarks, tests, takehome) ~100-180 lines each. docs/DEMO_VIDEO_SCRIPT.md 5-minute 7-scene shot list with curl bodies + narration."
+    },
+    {
+      "day": 35,
+      "phase": 7,
+      "date": "2026-06-07",
+      "component": "docs",
+      "feature": "system_writeup_public_artefact_plus_final_takehome_pass_plus_phase_7_squash_merge",
+      "feature_shipped": true,
+      "phase_wrap": true,
+      "project_complete": true,
+      "tests_passing": 871,
+      "tests_added_today": 0,
+      "tests_skipped": 10,
+      "tests_skipped_reason": "DATABASE_URL unset; PG-integration tests gated (unchanged across the project)",
+      "coverage_total_core_packages_pct": 90.0,
+      "coverage_artifact": "results/coverage_day35.json (fresh full-suite run; 3050 statements, 305 missing)",
+      "takehome_score": {
+        "context_engine": "5/5 non-LLM (raw 5/6) - final pass, unchanged since Day 7",
+        "orchestrator": "6/6 scenarios passed - final pass, unchanged since Day 10",
+        "note": "Both held end-to-end. Day-35 row appended to results/takehome_scorecard.md."
+      },
+      "phase_7_summary": {
+        "days": "33-35",
+        "tests_added_total": 26,
+        "test_suite_growth": "845 -> 871",
+        "coverage_growth": "87% -> 90% (core packages)",
+        "deliverables": [
+          "Day 33: 26-test coverage backfill - LLM-adapter modules to 100%, OTel noop to 88%",
+          "Day 34: ARCHITECTURE.md (7 mermaid diagrams), README refresh, 6 per-component READMEs, demo-video script",
+          "Day 35: docs/SYSTEM_WRITEUP.md (public hiring-manager narrative artefact), final pytest + takehome sweep, README status-line refresh, reports/final_report.md + explainers/final_explainer.md (LOCAL), Phase 7 PR squash-merged to main"
+        ],
+        "takehome_held": "context-engine 5/5 non-LLM + orchestrator 6/6 across all three Phase-7 days",
+        "branch": "phase/7-ship squash-merged to main on Day 35"
+      },
+      "project_summary": {
+        "days_total": 35,
+        "date_range": "2026-05-04 to 2026-06-07",
+        "phases_total": 7,
+        "tests_passing_final": 871,
+        "core_package_coverage_final_pct": 90.0,
+        "takehome_final": {
+          "context_engine": "5/5 non-LLM",
+          "orchestrator": "6/6 scenarios"
+        },
+        "champion_strategies": {
+          "context_engine_retrieval": "hybrid (recency-24h + semantic-older + LLM-summary-cold-tail) - 2480 brief tokens vs 12800 naive, ~6x cost reduction at parity quality, 4.2/5 LLM-judge",
+          "orchestrator_policy": "declarative YAML - 100% correctness, 0.6 microsec p50, $0/100 decisions, 5/5 auditability, ~17000x cheaper than LLM-as-judge"
+        },
+        "real_bugs_found_in_hardening": [
+          "GET /actions/{id} + POST /approvals/{id}/* HTTP leak - closed by adding optional tenant_id query param + same-shape 404 on cross-tenant attempts (OWASP API1:2023)",
+          "linking.resolve_customer TOCTOU race - closed by catch-and-retry-on-UNIQUE pattern; surfaced only via latency injection (GIL had been hiding the race in vanilla threaded tests)"
+        ]
+      },
+      "notes": "Project's last working day. Wrote docs/SYSTEM_WRITEUP.md (~350 lines, eight sections: what-it-is, architecture-in-one-paragraph, four headline findings, Phase-6 polish summary, Phase-7 ship summary, lessons learned, how-to-read-the-repo). README status line: Day 34 -> Day 35 project-complete; docs row adds SYSTEM_WRITEUP link. Final pytest 871 passed / 10 skipped / 90% core coverage (identical to Day 33 baseline). Final takehome run: context-engine 5/5 non-LLM, orchestrator 6/6 - both unchanged since Day 26. Stale partial results/coverage_day35.json from a prior aborted run overwritten by today's fresh full-suite sweep. reports/final_report.md + explainers/final_explainer.md written (LOCAL). PROGRESS_LOG.md Day-35 entry appended (LOCAL). Next action after this commit: Phase 7 PR body updated with Phase Wrap-Up + squash-merge to main, which closes the project."
     }
   ]
 }
