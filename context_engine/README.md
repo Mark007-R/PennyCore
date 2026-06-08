@@ -50,7 +50,10 @@ parallel implementation.
   - `summarized.py` — LLM-summarized cold tail + verbatim recent.
   - `rerank.py` — cross-encoder rerank stage layered on semantic.
   - `hybrid.py` — **champion**. Recency (last 24h) + semantic (older)
-    + summary (cold tail). Wins on quality AND cost.
+    + summary (cold tail). Uses 42% fewer brief tokens than naive at
+    parity fact recall (183/200 pairs); ~24% cheaper per 100q at tied
+    mock-proxy quality. Champion on the cost / quality-per-token
+    frontier. See README "Measurement honesty" + `results/phase5_*`.
 - **`safety/prompt_injection.py`** — strips known-bad patterns from
   customer-controlled fields before they enter the prompt. Backed by
   `tests/adversarial/test_prompt_injection.py`.

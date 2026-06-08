@@ -157,15 +157,19 @@ table at the top.
 > champion, and LLM-as-judge with structured output. The naive LLM
 > baseline got 54% correctness and zero out of five on the reject
 > class — it does not know how to say no. LLM-as-judge ties the
-> declarative champion on correctness at 100%, but at 11 milliseconds
-> per decision and ~$0.11 per 100 decisions versus the declarative
-> engine's 0.6 microseconds and zero cost. The 'best practice' for
-> compliance decisions in 2025-2026 — use the LLM to interpret the
-> policy — wins on nothing except the appearance of sophistication.
-> The retrieval comparison in context_engine reads the same way:
-> hybrid retrieval wins on quality AND cost, the LLM-summary-only
-> strategy actually loses on quality, and the naive dump-everything
-> baseline costs about 6× the champion at parity quality."
+> declarative champion on correctness at 100%, but it carries a real
+> per-decision LLM bill — about $0.11 per 100 decisions in the mock
+> run, roughly $0.57 per 100 projected at real pricing — versus the
+> declarative engine's zero marginal cost. (These benchmarks ran in
+> mock mode; the policy-engine latencies are local compute, so the
+> defensible axes here are correctness and cost.) The 'best practice'
+> for compliance decisions — use the LLM to interpret the policy —
+> wins on nothing except the appearance of sophistication when the
+> policy is clear. The retrieval comparison in context_engine reads
+> the same way: hybrid uses 42% fewer brief tokens than the naive
+> dump-everything baseline and costs about 24% less per 100 queries
+> at tied quality, with the summary-only strategy losing on the
+> verbatim-biased proxy."
 
 ### Scene 6 — Show the tests + coverage (3:50 – 4:25)
 

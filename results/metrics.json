@@ -2086,9 +2086,10 @@
           "orchestrator": "6/6 scenarios"
         },
         "champion_strategies": {
-          "context_engine_retrieval": "hybrid (recency-24h + semantic-older + LLM-summary-cold-tail) - 2480 brief tokens vs 12800 naive, ~6x cost reduction at parity quality, 4.2/5 LLM-judge",
-          "orchestrator_policy": "declarative YAML - 100% correctness, 0.6 microsec p50, $0/100 decisions, 5/5 auditability, ~17000x cheaper than LLM-as-judge"
+          "context_engine_retrieval": "hybrid (recency-24h + semantic-older + summary-cold-tail) - 838.4 brief tokens mean vs 1449.6 naive (42% fewer; 41% fewer than recency), mock-proxy quality 2.91 vs verbatim strategies 3.04 (proxy is verbatim-biased); Phase-5 fact-subset ties naive at 3.9/5 while costing 24% less per 100q ($0.585 vs $0.769) but ~2x slower p50 (0.48ms vs 0.24ms). Champion on quality-per-token frontier (3.47 vs recency 2.13).",
+          "orchestrator_policy": "declarative YAML - 100% correctness vs naive-LLM 54% (46pp gap; naive misses all 5 reject scenarios), 0.6 microsec local p50, $0 marginal cost vs ~$0.57/100 projected for LLM engines, 5/5 auditability. Ties llm_judge on correctness at zero marginal LLM cost (no finite multiplier - declarative cost is $0)."
         },
+        "measurement_caveat": "All benchmarks ran in MOCK_LLM mode. Tokens/latency/correctness/cost-arithmetic are real-computed on the real 200-pair + 200-tuple datasets; quality is a mock-proxy token-overlap heuristic (not a real LLM judge); policy-engine latencies are local compute (no network). Earlier prose drafts in README/SYSTEM_WRITEUP had inflated values (12800/2480 tokens, ~6x, ~17000x, 11ms) corrected to match the results JSON on 2026-06-08.",
         "real_bugs_found_in_hardening": [
           "GET /actions/{id} + POST /approvals/{id}/* HTTP leak - closed by adding optional tenant_id query param + same-shape 404 on cross-tenant attempts (OWASP API1:2023)",
           "linking.resolve_customer TOCTOU race - closed by catch-and-retry-on-UNIQUE pattern; surfaced only via latency injection (GIL had been hiding the race in vanilla threaded tests)"
