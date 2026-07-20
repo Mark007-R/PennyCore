@@ -1,4 +1,4 @@
-# PennyCore
+# AI-Customer-Ops-Engine
 
 Production-grade AI infrastructure for customer-service AI agents in
 regulated industries — a memory layer (`context_engine`) and a
