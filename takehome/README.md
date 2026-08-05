@@ -24,7 +24,6 @@ takehome/
 │   ├── memory_system.py      # adapter — implements MemorySystem Protocol
 │   ├── DESIGN.md             # adapter design rationale
 │   ├── SCORECARD.md          # per-scenario pass / fail history
-│   ├── TASK.md               # external task spec (verbatim)
 │   ├── requirements.txt      # pinned to the external spec
 │   └── .env                  # NOT committed — Azure keys for the external API
 └── orchestrator/
@@ -32,7 +31,6 @@ takehome/
     ├── orchestrator_impl.py  # adapter — implements AgentOrchestrator ABC
     ├── DESIGN.md
     ├── SCORECARD.md
-    ├── TASK.md
     ├── requirements.txt
     └── .env                  # NOT committed
 ```
