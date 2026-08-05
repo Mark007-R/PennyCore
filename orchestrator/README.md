@@ -5,8 +5,7 @@ the proposed actions through a tenant-specific policy engine, runs a
 human-approval queue (with N-of-M quorum support), executes, and
 audits.
 
-This README is a tour of the modules. Architecture picture in
-[../ARCHITECTURE.md §1-2](../ARCHITECTURE.md#1-component-map).
+This README is a tour of the modules.
 
 ## Public surface
 
