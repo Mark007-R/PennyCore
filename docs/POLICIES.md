@@ -309,11 +309,8 @@ Phase 6's admin UI is the operator surface that makes it real.
   the numbers in §4.
 - **`results/phase3_day18_consolidated.json`** — the locked Phase-3
   wrap data the §4 table is sourced from.
-- **`results/phase3_orchestrator_correctness.png`** /
-  **`results/phase3_orchestrator_cost_latency.png`** — the head-to-head
-  charts.
-- **`reports/day17_phase3_report.md`** — the run report.
-- **`reports/day18_phase3_report.md`** — the Phase 3 wrap.
+- **`results/phase3_orchestrator_results.json`** — the raw per-strategy
+  head-to-head run data behind those numbers.
 
 The policy module is locked at Phase 3 wrap. Phase 4 (Days 19-23)
 hardens around it; Phase 5 (Day 28) re-runs the LLM-judge slice with

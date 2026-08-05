@@ -193,16 +193,16 @@ still ship in 2026. Phase 5 ran both champions against that baseline.
 For retrieval: hybrid is **24% cheaper** per 100 queries than the
 dump-everything baseline ($0.585 vs $0.769) at **tied** mock-proxy
 quality (3.9/5 both) — but **slightly slower** at p50 (the cost win
-comes from fewer tokens, not less work). The per-bucket cost curve is
+comes from fewer tokens, not less work). The per-bucket cost data is
 in
-[`results/phase5_naive_vs_champion_cost_by_bucket.png`](../results/phase5_naive_vs_champion_cost_by_bucket.png);
+[`results/phase5_naive_vs_champion_context_engine.json`](../results/phase5_naive_vs_champion_context_engine.json);
 the win widens on long histories (naive's very-long bucket costs
 $2.87/100q vs hybrid's $0.72).
 
 For policy: declarative-YAML correctness **100% vs. naive-LLM 54%**
 (a 46-point gap), at **$0 vs ~$0.57 per 100 decisions** projected. The
-frontier chart is in
-[`results/phase5_naive_vs_champion_orch_frontier.png`](../results/phase5_naive_vs_champion_orch_frontier.png).
+frontier data is in
+[`results/phase5_naive_vs_champion_orchestrator.json`](../results/phase5_naive_vs_champion_orchestrator.json).
 
 The honest headline for a post: *"I tested four policy-engine
 strategies on 200 banking-action decisions. The 'best practice'
