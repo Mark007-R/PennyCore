@@ -4,8 +4,7 @@ The memory librarian. Ingests customer interactions from every channel,
 links identities across channels, and assembles a token-budgeted brief
 for the LLM before every reply.
 
-This README is a tour of the modules. The architecture picture is in
-[../ARCHITECTURE.md §1](../ARCHITECTURE.md#1-component-map).
+This README is a tour of the modules.
 
 ## Public surface
 
@@ -73,8 +72,7 @@ parallel implementation.
 ### LLM dispatch
 - **`llm/__init__.py`** — `get_client()` reads `LLM_PROVIDER` and
   `MOCK_LLM` from env (loaded from `.env`), returns the right adapter.
-  The dispatch decision tree is drawn in
-  [../ARCHITECTURE.md §5](../ARCHITECTURE.md#5-llm-provider-dispatch).
+  It resolves the adapter from `MOCK_LLM` and the configured provider.
 - **`llm/anthropic_client.py`** — Claude (default — sonnet for system,
   haiku for cost-sensitive paths, sonnet for LLM-as-judge).
 - **`llm/azure_client.py`** — Azure AI Foundry "Models" endpoint
