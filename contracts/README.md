@@ -4,8 +4,7 @@ The schema that both services agree on. Importing the wrong shape from
 either service is a type error, not a runtime mystery.
 
 This package is small on purpose. It owns data shapes; it does not own
-behavior. Field-by-field schemas are documented in
-[../docs/SYSTEM_DESIGN.md §4](../docs/SYSTEM_DESIGN.md).
+behavior.
 
 ## Models
 

@@ -1,6 +1,6 @@
 # PennyCore — Architecture (mermaid)
 
-This is the visual companion to [docs/SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md).
+This is the visual map of the system.
 The prose source-of-truth (responsibilities, schemas, invariants, scenarios)
 lives there; this file is the picture-first overview a reader can scan in
 60 seconds.
@@ -303,12 +303,6 @@ gantt
 
 | Doc | What it answers |
 |-----|-----------------|
-| [docs/SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md) | Component responsibilities, schema, invariants, scenarios |
-| [docs/API.md](docs/API.md) | HTTP contracts for both services |
-| [docs/POLICIES.md](docs/POLICIES.md) | Tenant policy model + Phase-3 4-engine comparison |
-| [docs/DEMO_SCENARIO.md](docs/DEMO_SCENARIO.md) | Jane's mortgage walkthrough, step by step |
-| [docs/RESEARCH_SURVEY.md](docs/RESEARCH_SURVEY.md) | Phase-1 production-AI-infrastructure survey |
-| [docs/DEMO_VIDEO_SCRIPT.md](docs/DEMO_VIDEO_SCRIPT.md) | Five-minute recorded walkthrough script |
 | [context_engine/README.md](context_engine/README.md) | Memory layer — modules, public API |
 | [orchestrator/README.md](orchestrator/README.md) | Decision layer — modules, public API |
 | [contracts/README.md](contracts/README.md) | Shared Pydantic models + observability shims |
