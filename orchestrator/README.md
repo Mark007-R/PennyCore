@@ -6,11 +6,7 @@ human-approval queue (with N-of-M quorum support), executes, and
 audits.
 
 This README is a tour of the modules. Architecture picture in
-[../ARCHITECTURE.md §1-2](../ARCHITECTURE.md#1-component-map);
-prose source-of-truth in
-[../docs/SYSTEM_DESIGN.md §2.2](../docs/SYSTEM_DESIGN.md);
-policy model and the 4-engine comparison in
-[../docs/POLICIES.md](../docs/POLICIES.md).
+[../ARCHITECTURE.md §1-2](../ARCHITECTURE.md#1-component-map).
 
 ## Public surface
 

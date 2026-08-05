@@ -15,9 +15,7 @@ external scorecard at any time.
 
 **Day 35 of 35 — project complete.** All seven phases squash-merged
 to `main`. The build ran May 4 – June 7, 2026; this is the artefact
-it produced. The narrative close-out write-up — the engineering-blog-
-shaped public artefact — is at
-[`docs/SYSTEM_WRITEUP.md`](docs/SYSTEM_WRITEUP.md).
+it produced.
 
 - **Test suite:** 871 passed, 10 skipped (Postgres-gated; run with
   `DATABASE_URL` set).
@@ -33,8 +31,7 @@ shaped public artefact — is at
 
 Two services in one repo, sharing Postgres + Redis. The visual map of
 the system is in [ARCHITECTURE.md](ARCHITECTURE.md) (mermaid
-diagrams); the prose source-of-truth is
-[docs/SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md).
+diagrams).
 
 | Component | Job |
 |-----------|-----|
@@ -48,9 +45,7 @@ diagrams); the prose source-of-truth is
 
 ## Phase champions (locked in)
 
-These are the results that drive the project's narrative. Numbers in
-`results/metrics.json`, deep dive in
-[docs/POLICIES.md](docs/POLICIES.md) and the Phase 3/5 reports.
+These are the results that drive the project's narrative.
 
 > **Measurement honesty.** The whole project ran in `MOCK_LLM` mode
 > (no live LLM key worked during the benchmark runs). Token counts,
@@ -59,8 +54,7 @@ These are the results that drive the project's narrative. Numbers in
 > scores are a **mock-proxy token-overlap judge**, not a real
 > LLM-as-judge — they reward verbatim text, so compression strategies
 > score lower than they would under a real judge (noted in the results
-> files' `proxy_bias_note`). Numbers below are the actual values in
-> `results/phase3_day18_consolidated.json` + `results/phase5_*.json`.
+> files' `proxy_bias_note`).
 
 ### Context-engine — retrieval strategy (200 pairs)
 
@@ -157,8 +151,7 @@ the reports. See [`.env.example`](.env.example) for the variables.
 
 ## Demo
 
-The five-minute recorded walkthrough script lives at
-[docs/DEMO_VIDEO_SCRIPT.md](docs/DEMO_VIDEO_SCRIPT.md). It threads:
+The five-minute recorded walkthrough threads:
 docker-compose up → ingest Jane's mortgage_inquiry → watch the
 auto-execute action → watch the quorum-gated action queue and approve
 it → reload the approver UI → flip MOCK_LLM=true / false to show
@@ -181,16 +174,8 @@ provider dispatch → show the audit log.
     200 event / tenant / expected-action tuples (committed).
 - `migrations/` — Alembic versions.
 - `tests/` — 871 passing across unit / integration / adversarial.
-- `results/` — metrics journal, experiment log, comparison charts,
-  takehome scorecard, sample diagrams.
-- `notebooks/` — Phase-3 / Phase-5 analysis (read results JSON,
-  render comparison tables and charts).
-- `docs/` — [SYSTEM_WRITEUP](docs/SYSTEM_WRITEUP.md) (public
-  hiring-manager narrative, Day 35) · [SYSTEM_DESIGN](docs/SYSTEM_DESIGN.md) ·
-  [API](docs/API.md) · [POLICIES](docs/POLICIES.md) ·
-  [DEMO_SCENARIO](docs/DEMO_SCENARIO.md) ·
-  [RESEARCH_SURVEY](docs/RESEARCH_SURVEY.md) ·
-  [DEMO_VIDEO_SCRIPT](docs/DEMO_VIDEO_SCRIPT.md).
+- `notebooks/` — Phase-3 / Phase-5 analysis (render comparison
+  tables and charts from a fresh benchmark run).
 - `ui/` — Streamlit approver app + Jane's-mortgage walkthrough.
 - `scripts/` — migrations, takehome eval runner, diagram renderers,
   local-run / CI shells.

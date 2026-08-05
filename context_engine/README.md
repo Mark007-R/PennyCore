@@ -5,9 +5,7 @@ links identities across channels, and assembles a token-budgeted brief
 for the LLM before every reply.
 
 This README is a tour of the modules. The architecture picture is in
-[../ARCHITECTURE.md §1](../ARCHITECTURE.md#1-component-map);
-the prose source-of-truth is
-[../docs/SYSTEM_DESIGN.md §2.1](../docs/SYSTEM_DESIGN.md).
+[../ARCHITECTURE.md §1](../ARCHITECTURE.md#1-component-map).
 
 ## Public surface
 
@@ -53,7 +51,7 @@ parallel implementation.
     + summary (cold tail). Uses 42% fewer brief tokens than naive at
     parity fact recall (183/200 pairs); ~24% cheaper per 100q at tied
     mock-proxy quality. Champion on the cost / quality-per-token
-    frontier. See README "Measurement honesty" + `results/phase5_*`.
+    frontier. See README "Measurement honesty".
 - **`safety/prompt_injection.py`** — strips known-bad patterns from
   customer-controlled fields before they enter the prompt. Backed by
   `tests/adversarial/test_prompt_injection.py`.

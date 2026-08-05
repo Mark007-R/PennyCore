@@ -85,8 +85,7 @@ The adapter:
 | context-engine | **5/5** non-LLM | Scenario 6 needs the `openai` SDK in the takehome venv; the adapter otherwise passes. |
 | orchestrator | **6/6** | All scenarios pass — including the multi-tenant + idempotency + audit scenarios. |
 
-Held across all Phase-6 additive days; the Phase-6 PR backfill row
-in `results/metrics.json` records the weekly re-validation.
+Held across all Phase-6 additive days, re-validated weekly.
 
 ## Running
 
@@ -102,8 +101,7 @@ cd takehome/orchestrator && python evaluate.py
 ```
 
 `run_takehome_evals.sh` activates the right venv, ensures `.env` is
-present (warns if not), and writes the scorecard to
-`results/takehome_scorecard.md`.
+present (warns if not), and writes the scorecard to `results/`.
 
 ## Why the adapter pattern is the right call
 
